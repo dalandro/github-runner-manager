@@ -1,0 +1,32 @@
+# GitHub-hosted runners ONLY. Never serve this repository with a self-hosted
+# runner: a workflow from a public fork pull request can execute arbitrary code
+# on the owner's machine.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Bash
+        run: shellcheck bin/* hooks/* lib/*.sh scripts/*.sh test/*.bash
+      - name: Fetch test dependency
+        run: scripts/fetch-test-deps.sh
+      - name: Check syntax
+        run: |
+          for script in bin/* hooks/* lib/*.sh scripts/*.sh test/*.bash; do
+            bash -n "$script"
+          done
+      - name: Test
+        run: test/vendor/bats-core/bin/bats test/
+      - name: Check private terms (no-op without local terms)
+        run: scripts/check-no-private-terms.sh

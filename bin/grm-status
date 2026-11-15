@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+(($# == 0)) || usage_error 'usage: grm-status'
+printf 'Runner units\n'
+systemctl_user list-units --all "$GRM_UNIT_PREFIX*" || warning 'grm-status: user service manager unavailable'
+printf '\nBusy workers\n'
+pgrep -a -x Runner.Worker || printf 'none\n'
+printf '\nJob slots\n'
+"$GRM_ROOT/bin/job-slots" status
+printf '\nDevice '
+lock=$(readlink -m "$GRM_DEVICE_LOCK")
+if [[ ! -e $lock ]]; then
+  printf 'lock: absent\n'
+else
+  if [[ -n $(find_lock_holders "$lock") ]]; then printf 'lock: held\n'; else printf 'lock: free\n'; fi
+fi
+if [[ -r $lock.holder ]]; then
+  IFS= read -r recorded < "$lock.holder" || true
+  printf 'recorded holder: %s\n' "$recorded"
+fi
+printf '\nLoad and memory\n'
+if metrics=$(get_load_and_memory); then
+  read -r current available <<< "$metrics"
+  printf 'load (1 min): %s; available: %s MB\n' "$current" "$available"
+else
+  printf 'unavailable\n'
+fi

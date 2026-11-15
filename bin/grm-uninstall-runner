@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+(($# == 1)) || usage_error 'usage: grm-uninstall-runner name'
+name=$1
+get_runner_units "$name" > /dev/null
+unit=$GRM_UNIT_PREFIX$name.service
+for action in stop disable; do
+  if systemctl_user "$action" "$unit"; then continue; fi
+  [[ $(systemctl_user show --property=LoadState --value "$unit") == not-found ]] || exit 1
+done
+rm -f "$GRM_SYSTEMD_USER_DIR/$unit"
+runner=$(readlink -m "$GRM_RUNNERS_DIR/$name")
+if [[ -f $runner/.env ]]; then write_runner_env "$runner/.env" uninstall; fi
+systemctl_user daemon-reload
+notice 'runner registration and files kept; run ./config.sh remove with a removal token to de-register'
