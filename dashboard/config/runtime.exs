@@ -37,5 +37,6 @@ if config_env() != :test do
 
   config :dashboard, Dashboard.Poller,
     source: source,
-    interval: String.to_integer(System.get_env("GRM_DASHBOARD_INTERVAL_MS", "2000"))
+    # Never faster than twice a second: each read runs the status command.
+    interval: max(String.to_integer(System.get_env("GRM_DASHBOARD_INTERVAL_MS", "2000")), 500)
 end

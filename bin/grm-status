@@ -12,7 +12,7 @@ case ${1:-} in
     if (($#)); then interval=$1; shift; fi;;
 esac
 (($# == 0)) || usage_error 'usage: grm-status [--json | --watch [seconds]]'
-is_number "$interval" || usage_error 'grm-status: invalid watch interval'
+if ! is_number "$interval" || [[ $interval =~ ^[0.]+$ ]]; then usage_error 'grm-status: invalid watch interval'; fi
 lock=$(readlink -m "$GRM_DEVICE_LOCK")
 
 get_lock_state() {
@@ -56,8 +56,9 @@ json_string() {
   printf '"%s"' "$value"
 }
 
+# JSON numbers have no leading zeros; anything else prints as null.
 json_number() {
-  if is_number "${1:-}"; then printf '%s' "$1"; else printf 'null'; fi
+  if [[ ${1:-} =~ ^(0|[1-9][0-9]*)([.][0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi
 }
 
 # The busy worker of a runner is the worker process whose executable lives in

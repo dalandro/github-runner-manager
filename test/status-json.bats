@@ -170,6 +170,17 @@ fake_proc() {
   [ "$status" -eq 2 ]
   run "$GRM_ROOT/bin/grm-status" --watch soon
   [ "$status" -eq 2 ]
+  run "$GRM_ROOT/bin/grm-status" --watch 0
+  [ "$status" -eq 2 ]
+  run "$GRM_ROOT/bin/grm-status" --watch 0.0
+  [ "$status" -eq 2 ]
+}
+
+@test "json status stays valid when a configured number has leading zeros" {
+  export GRM_SYSTEMCTL=true GRM_MAX_LOAD=08 GRM_MIN_MEM_MB=0512
+  run "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 0 ]
+  [ "$(json 'document["host"]["max_load"], document["host"]["min_memory_mb"]')" = "(None, None)" ]
 }
 
 @test "watch repeats the text view until stopped" {
