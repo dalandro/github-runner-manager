@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+
+command=${1:-}
+[[ $# -gt 0 ]] && shift
+holder=$PPID units=1 label=job raw=0
+while (($#)); do
+  case $1 in
+    --holder|--units|--label)
+      (($# >= 2)) || usage_error "job-slots: missing value for $1"
+      case $1 in
+        --holder) holder=$2;; --units) units=$2;; --label) label=$2;;
+      esac
+      shift 2;;
+    --raw) raw=1; shift;;
+    *) usage_error 'usage: job-slots acquire|release|park|unpark|status [--holder PID] [--units N] [--label L] [--raw]';;
+  esac
+done
+case $command in acquire|release|park|unpark|status) ;; *) usage_error 'job-slots: unknown command';; esac
+if ! is_uint "$holder" || ((holder == 0)); then usage_error 'job-slots: invalid holder'; fi
+if ! is_uint "$units" || ((units == 0)); then usage_error 'job-slots: invalid units'; fi
+if ! is_uint "$GRM_SLOTS_CAPACITY" || ((GRM_SLOTS_CAPACITY == 0)); then usage_error 'job-slots: capacity must be positive'; fi
+if ! is_uint "$GRM_SLOTS_MAX_WAIT" || ! is_number "$GRM_SLOTS_POLL"; then usage_error 'job-slots: invalid wait settings'; fi
+label=${label//[^a-zA-Z0-9._\/:\-]/_}
+label=${label:-job}
+directory=$GRM_STATE_DIR/slots
+state=$directory/state
+records=() next=1
+
+read_state() {
+  local kind ticket process start waiter waiter_start weight name
+  records=() next=1
+  [[ -f $state ]] || return 0
+  while read -r kind ticket process start waiter waiter_start weight name; do
+    if [[ $kind == next ]]; then next=$ticket; continue; fi
+    case $kind in holding|queued|parked) ;; *) continue;; esac
+    is_alive "$process" "$start" || continue
+    if [[ $kind == queued ]]; then is_alive "$waiter" "$waiter_start" || continue; fi
+    records+=("$kind $ticket $process $start $waiter $waiter_start $weight $name")
+  done < "$state"
+}
+
+write_state() {
+  local temporary
+  temporary=$(mktemp "$directory/state.XXXXXX")
+  {
+    printf 'next %s\n' "$next"
+    if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi
+  } > "$temporary"
+  mv -f "$temporary" "$state"
+}
+
+if [[ $command == status && ! -f $directory/lock ]]; then
+  if ((raw == 0)); then printf 'capacity %s used 0\n' "$GRM_SLOTS_CAPACITY"; fi
+  exit 0
+fi
+if [[ $command == status ]]; then
+  exec {lock_fd}<"$directory/lock"
+else
+  mkdir -p "$directory"
+  exec {lock_fd}>"$directory/lock"
+fi
+flock "$lock_fd"
+read_state
+if [[ $command == status ]]; then
+  used=0
+  for record in "${records[@]}"; do
+    read -r kind _ _ _ _ _ weight _ <<< "$record"
+    if [[ $kind == holding ]]; then used=$((used + weight)); fi
+  done
+  if ((raw)); then
+    printf 'next %s\n' "$next"
+    if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi
+  else
+    printf 'capacity %s used %s\n' "$GRM_SLOTS_CAPACITY" "$used"
+    printf 'KIND TICKET HOLDER START WAITER START UNITS LABEL\n'
+    if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi
+  fi
+  exit 0
+fi
+holder_start=$(get_start_time "$holder")
+if [[ $command == acquire && -z $holder_start ]]; then usage_error 'job-slots: holder is not alive'; fi
+if [[ $command == release || $command == park ]]; then
+  updated=()
+  for record in "${records[@]}"; do
+    read -r kind ticket process start waiter waiter_start weight name <<< "$record"
+    if [[ $process == "$holder" ]]; then
+      if [[ $command == release ]]; then continue; fi
+      if [[ $kind == holding ]]; then record="parked $ticket $process $start 0 0 $weight $name"; fi
+    fi
+    updated+=("$record")
+  done
+  records=("${updated[@]}")
+  write_state
+  exit 0
+fi
+own_ticket=0
+for record in "${records[@]}"; do
+  read -r kind ticket process _ _ _ weight _ <<< "$record"
+  [[ $process == "$holder" ]] || continue
+  if [[ $kind == holding ]]; then write_state; exit 0; fi
+  if [[ $command == unpark && $kind == parked ]]; then own_ticket=$ticket; units=$weight; fi
+done
+if [[ $command == acquire ]]; then
+  own_ticket=$next
+  next=$((next + 1))
+  records+=("queued $own_ticket $holder $holder_start $$ $(get_start_time "$$") $units $label")
+else
+  if ((own_ticket == 0)); then write_state; exit 0; fi
+  for index in "${!records[@]}"; do
+    read -r kind ticket process start _ _ weight name <<< "${records[index]}"
+    if ((ticket == own_ticket)); then
+      records[index]="$kind $ticket $process $start $$ $(get_start_time "$$") $weight $name"
+    fi
+  done
+fi
+write_state
+flock -u "$lock_fd"
+started=$(date +%s)
+last_notice=$started
+while :; do
+  flock "$lock_fd"
+  read_state
+  used=0 queue_head=0 parked_head=0 own_index=-1
+  for index in "${!records[@]}"; do
+    read -r kind ticket _ _ waiter waiter_start weight _ <<< "${records[index]}"
+    case $kind in
+      holding) used=$((used + weight));;
+      queued) if ((queue_head == 0 || ticket < queue_head)); then queue_head=$ticket; fi;;
+      parked)
+        if is_alive "$waiter" "$waiter_start" && ((parked_head == 0 || ticket < parked_head)); then parked_head=$ticket; fi;;
+    esac
+    if ((ticket == own_ticket)); then own_index=$index; fi
+  done
+  if ((own_index < 0)); then write_state; exit 1; fi
+  now=$(date +%s)
+  fits=0 priority=0 escaped=0
+  if ((used + units <= GRM_SLOTS_CAPACITY || (used == 0 && units > GRM_SLOTS_CAPACITY))); then fits=1; fi
+  if [[ $command == unpark ]]; then
+    if ((own_ticket == parked_head)); then priority=1; fi
+  elif ((parked_head == 0 && own_ticket == queue_head)); then priority=1
+  fi
+  if ((now - started >= GRM_SLOTS_MAX_WAIT)); then escaped=1; fi
+  if (( (fits && priority) || escaped )); then
+    read -r _ ticket process start waiter waiter_start weight name <<< "${records[own_index]}"
+    records[own_index]="holding $ticket $process $start 0 0 $weight $name"
+    write_state
+    flock -u "$lock_fd"
+    if ((escaped)); then warning "job-slots: max wait exceeded; admitting $holder ($units units), previously used $used"; fi
+    notice "job-slots: admitted $holder ($units units); used $((used + units))/$GRM_SLOTS_CAPACITY"
+    exit 0
+  fi
+  write_state
+  if ((now - last_notice >= 30)); then
+    notice "job-slots: waiting ticket $own_ticket; used $used/$GRM_SLOTS_CAPACITY; ${records[*]}"
+    last_notice=$now
+  fi
+  flock -u "$lock_fd"
+  sleep "$GRM_SLOTS_POLL"
+done

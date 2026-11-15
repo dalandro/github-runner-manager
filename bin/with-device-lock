@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+lock=$GRM_DEVICE_LOCK timeout=$GRM_DEVICE_LOCK_TIMEOUT
+while (($#)); do
+  case $1 in
+    --lock|--timeout)
+      (($# >= 2)) || usage_error "with-device-lock: missing value for $1"
+      case $1 in --lock) lock=$2;; --timeout) timeout=$2;; esac
+      shift 2;;
+    --) shift; break;;
+    -*) usage_error "with-device-lock: unknown option $1";;
+    *) break;;
+  esac
+done
+(($#)) || usage_error 'usage: with-device-lock [--lock FILE] [--timeout S] -- command [args...]'
+if ! is_number "$timeout" || ! is_uint "$GRM_DEVICE_LOCK_GRACE"; then usage_error 'with-device-lock: invalid timeout or grace'; fi
+lock=$(readlink -m "$lock")
+mkdir -p "$(dirname "$lock")"
+exec {lock_fd}>"$lock"
+child='' child_start='' timer='' cancel=0 wrote_holder=0 phase=waiting
+wrapper_start=$(get_start_time "$$")
+
+# Invoked only from the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() {
+  if [[ -n $timer ]]; then kill "$timer" 2>/dev/null || true; wait "$timer" 2>/dev/null || true; fi
+  if ((wrote_holder)); then rm -f "$lock.holder"; fi
+}
+trap cleanup EXIT
+
+stop_child() {
+  local signal=$((cancel - 128))
+  [[ -n $child ]] && is_alive "$child" "$child_start" || return 0
+  kill -"$signal" "$child" 2>/dev/null || true
+  if [[ $phase == running && -z $timer ]]; then
+    (
+      exec {lock_fd}>&-
+      # Reap the delay if normal completion cancels the grace timer.
+      sleep "$GRM_DEVICE_LOCK_GRACE" &
+      delay=$!
+      trap 'kill "$delay" 2>/dev/null || true; exit 0' TERM INT HUP
+      wait "$delay" || true
+      if is_alive "$child" "$child_start"; then kill -KILL "$child" 2>/dev/null || true; fi
+    ) </dev/null &
+    timer=$!
+  fi
+}
+
+# Invoked only from the TERM/INT/HUP traps.
+# shellcheck disable=SC2329
+cancel_job() {
+  local signal=$1
+  ((cancel == 0)) || return 0
+  cancel=$((128 + signal))
+  stop_child
+}
+trap 'cancel_job 15' TERM
+trap 'cancel_job 2' INT
+trap 'cancel_job 1' HUP
+
+wait_child() {
+  result=0
+  while :; do
+    if wait "$child"; then result=0; else result=$?; fi
+    is_alive "$child" "$child_start" || break
+  done
+  child='' child_start=''
+}
+
+holder=${GRM_SLOTS_HOLDER:-$(find_worker_pid)}
+parked=0
+if ! flock -n "$lock_fd"; then
+  recorded=unknown
+  if [[ -r $lock.holder ]]; then IFS= read -r recorded < "$lock.holder" || true; fi
+  notice "with-device-lock: waiting for $lock; holder: $recorded"
+  if [[ $GRM_DEVICE_LOCK_PARK != 0 && -n $holder ]]; then
+    "$GRM_ROOT/bin/job-slots" park --holder "$holder" {lock_fd}>&-
+    parked=1
+  fi
+  ( trap - INT QUIT; exec flock -w "$timeout" -E 75 "$lock_fd" ) &
+  child=$!
+  child_start=$(get_start_time "$child")
+  if ((cancel)); then stop_child; fi
+  wait_child
+  if ((cancel)); then exit "$cancel"; fi
+  if ((result != 0)); then
+    recorded=unknown
+    if [[ -r $lock.holder ]]; then IFS= read -r recorded < "$lock.holder" || true; fi
+    error "with-device-lock: timed out waiting for $lock; holder: $recorded"
+    exit "$result"
+  fi
+fi
+if ((cancel)); then exit "$cancel"; fi
+printf '%s %s %s %s %s %s\n' "${GITHUB_REPOSITORY:-unknown}" "${GITHUB_RUN_ID:-unknown}" "${GITHUB_JOB:-unknown}" "$$" "$wrapper_start" "$(date +%s)" > "$lock.holder"
+wrote_holder=1
+phase=running
+if ((parked)); then
+  ( trap - INT QUIT; exec "$GRM_ROOT/bin/job-slots" unpark --holder "$holder" ) {lock_fd}>&- &
+  child=$!
+  child_start=$(get_start_time "$child")
+  if ((cancel)); then stop_child; fi
+  wait_child
+  if ((cancel)); then exit "$cancel"; fi
+  ((result == 0)) || exit "$result"
+fi
+if ((cancel)); then exit "$cancel"; fi
+( trap - INT QUIT; exec "$@" ) {lock_fd}>&- <&0 &
+child=$!
+child_start=$(get_start_time "$child")
+if ((cancel)); then stop_child; fi
+wait_child
+if ((cancel)); then exit "$cancel"; fi
+exit "$result"

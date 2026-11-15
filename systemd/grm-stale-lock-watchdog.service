@@ -1,0 +1,9 @@
+[Unit]
+Description=Report stale device lock holders
+
+[Service]
+Type=oneshot
+Environment=@CONFIG_ENV@
+ExecStart=@WATCHDOG_EXEC@
+# A finding exits 1 and remains visible in the journal without failing the unit.
+SuccessExitStatus=1

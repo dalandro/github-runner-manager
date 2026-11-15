@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+enable=0 watchdog=0
+while (($#)); do
+  case $1 in
+    --enable) enable=1; shift;;
+    --watchdog) watchdog=1; shift;;
+    --*) usage_error "grm-install-runner: unknown option $1";;
+    *) break;;
+  esac
+done
+(($# == 1)) || usage_error 'usage: grm-install-runner [--enable] [--watchdog] name'
+name=$1
+units=$(get_runner_units "$name")
+systemd_working_directory "$GRM_RUNNERS_DIR" > /dev/null
+runner=$(readlink -m "$GRM_RUNNERS_DIR/$name")
+[[ -f $runner/run.sh ]] || usage_error 'runner run.sh missing; download and register the runner first'
+working_directory=$(systemd_working_directory "$runner")
+unit=$GRM_UNIT_PREFIX$name.service
+active=0
+if systemctl_user is-active --quiet "$unit"; then active=1; fi
+mkdir -p "$GRM_SYSTEMD_USER_DIR"
+render_template "$GRM_ROOT/systemd/runner.service.in" \
+  @RUNNER_DIRECTORY@ "$working_directory" \
+  @RUNNER_EXEC@ "$(quote_systemd "$runner/run.sh" exec)" > "$GRM_SYSTEMD_USER_DIR/$unit"
+write_runner_env "$runner/.env" install "$units"
+if ((watchdog)); then
+  render_template "$GRM_ROOT/systemd/grm-stale-lock-watchdog.service" \
+    @CONFIG_ENV@ "$(quote_systemd "GRM_CONFIG=$GRM_CONFIG")" \
+    @WATCHDOG_EXEC@ "$(quote_systemd "$GRM_ROOT/bin/stale-lock-watchdog" exec)" > "$GRM_SYSTEMD_USER_DIR/grm-stale-lock-watchdog.service"
+  cp "$GRM_ROOT/systemd/grm-stale-lock-watchdog.timer" "$GRM_SYSTEMD_USER_DIR/grm-stale-lock-watchdog.timer"
+fi
+systemctl_user daemon-reload
+if ((enable)); then
+  if ((active)); then systemctl_user enable "$unit"; else systemctl_user enable --now "$unit"; fi
+fi
+if ((watchdog)); then systemctl_user enable --now grm-stale-lock-watchdog.timer; fi
+if ((active)); then notice "restart $unit when idle to apply"; fi
+notice "installed $unit; runner labels are configured during registration"

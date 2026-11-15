@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+max_load=$GRM_MAX_LOAD min_mem=$GRM_MIN_MEM_MB timeout=$GRM_LOAD_TIMEOUT interval=15 on_timeout=proceed
+while (($#)); do
+  (($# >= 2)) || usage_error 'wait-for-load: option requires a value'
+  case $1 in
+    --max-load) max_load=$2;;
+    --min-mem-mb) min_mem=$2;;
+    --timeout) timeout=$2;;
+    --interval) interval=$2;;
+    --on-timeout) on_timeout=$2;;
+    *) usage_error "wait-for-load: unknown option $1";;
+  esac
+  shift 2
+done
+if ! { is_number "$max_load" && is_uint "$min_mem" && is_uint "$timeout" && is_number "$interval"; }; then
+  usage_error 'wait-for-load: invalid numeric setting'
+fi
+[[ $on_timeout == proceed || $on_timeout == fail ]] || usage_error 'wait-for-load: on-timeout must be proceed or fail'
+started=$(date +%s)
+while :; do
+  metrics=unavailable
+  if metrics=$(get_load_and_memory); then
+    read -r load available <<< "$metrics"
+    if awk -v current="$load" -v maximum="$max_load" 'BEGIN {exit !(current < maximum)}' && ((available >= min_mem)); then exit 0; fi
+  fi
+  if (($(date +%s) - started >= timeout)); then
+    warning "wait-for-load: timeout; load/memory: $metrics; required load < $max_load, memory >= $min_mem MB"
+    if [[ $on_timeout == fail ]]; then exit 1; fi
+    exit 0
+  fi
+  # Leave subsecond test intervals exact; add up to two seconds to normal waits.
+  delay=$(awk -v interval="$interval" -v jitter="$((RANDOM % 3))" 'BEGIN {print interval + (interval >= 1 ? jitter : 0)}')
+  sleep "$delay"
+done

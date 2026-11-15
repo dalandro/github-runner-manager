@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+lock=$GRM_DEVICE_LOCK min_age=$GRM_WATCHDOG_MIN_AGE kill_stale=$GRM_WATCHDOG_KILL
+while (($#)); do
+  case $1 in
+    --lock|--min-age)
+      (($# >= 2)) || usage_error "stale-lock-watchdog: missing value for $1"
+      case $1 in --lock) lock=$2;; --min-age) min_age=$2;; esac
+      shift 2;;
+    --kill) kill_stale=1; shift;;
+    *) usage_error "stale-lock-watchdog: unknown option $1";;
+  esac
+done
+is_uint "$min_age" || usage_error 'stale-lock-watchdog: invalid minimum age'
+[[ $kill_stale == 0 || $kill_stale == 1 ]] || usage_error 'stale-lock-watchdog: kill must be 0 or 1'
+lock=$(readlink -m "$lock")
+[[ -e $lock ]] || exit 0
+recorded=missing legitimate=0 holder=0 holder_start=0
+if [[ -r $lock.holder ]]; then
+  IFS= read -r recorded < "$lock.holder" || true
+  read -r _ _ _ holder holder_start _ <<< "$recorded"
+  if is_alive "$holder" "$holder_start"; then legitimate=1; fi
+fi
+read -r uptime _ < /proc/uptime
+ticks=$(getconf CLK_TCK)
+read -r -a allowed_names <<< "$GRM_WATCHDOG_KILL_ALLOW"
+if ((kill_stale && ${#allowed_names[@]} == 0)); then
+  notice 'stale-lock-watchdog: empty allow-list; no processes will be killed'
+fi
+found=0
+while read -r process number; do
+  directory=/proc/$process
+  if ((legitimate)) && [[ $process == "$holder" ]]; then continue; fi
+  start=$(get_start_time "$process")
+  [[ -n $start ]] || continue
+  age=$(awk -v uptime="$uptime" -v start="$start" -v ticks="$ticks" 'BEGIN {printf "%.0f", int(uptime - start / ticks)}')
+  ((age >= min_age)) || continue
+  { IFS= read -r comm < "$directory/comm"; } 2>/dev/null || continue
+  printf 'stale: pid %s (%s, age %ss) holds %s via fd %s; recorded holder: %s\n' "$process" "$comm" "$age" "$lock" "$number" "$recorded"
+  if ((legitimate == 0)); then printf 'lock held but holder file missing or holder dead\n'; fi
+  found=1
+  if ((kill_stale)); then
+    allowed=0
+    for name in "${allowed_names[@]}"; do if [[ $comm == "$name" ]]; then allowed=1; fi; done
+    if ((allowed)); then
+      if is_alive "$process" "$start"; then kill -TERM "$process" 2>/dev/null || true; fi
+    else
+      printf 'not killed: not allow-listed\n'
+    fi
+  fi
+done < <(find_lock_holders "$lock")
+exit "$found"
