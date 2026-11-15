@@ -39,6 +39,20 @@ defmodule DashboardWeb.LocalHostTest do
     end
   end
 
+  test "the live socket refuses a page from any other origin", %{conn: conn} do
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        conn =
+          conn
+          |> put_req_header("origin", "http://attacker.example")
+          |> get("/live/websocket?vsn=2.0.0")
+
+        assert conn.status == 403
+      end)
+
+    assert log =~ "Could not check origin"
+  end
+
   test "the endpoint is configured for loopback only" do
     config = Application.fetch_env!(:dashboard, DashboardWeb.Endpoint)
 

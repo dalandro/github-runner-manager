@@ -6,7 +6,10 @@ defmodule DashboardWeb.Plugs.LocalHost do
   browser on this machine can still reach a loopback port through DNS
   rebinding: a hostname the attacker controls is re-pointed at 127.0.0.1 and
   the browser treats the dashboard as that site's own origin. Such a request
-  carries the attacker's hostname in `Host`, so checking it closes the hole.
+  carries the attacker's hostname in `Host`, so checking it closes the hole
+  for pages and static files. Phoenix dispatches sockets before endpoint
+  plugs, so the live socket is covered by `check_origin` instead, which is
+  limited to the same two names in `config/config.exs`.
   An SSH tunnel is unaffected: the browser still asks for `localhost`.
   """
 
