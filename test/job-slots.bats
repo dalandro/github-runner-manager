@@ -170,3 +170,21 @@ unpark_is_waiting() {
   run env GRM_SLOTS_CAPACITY=08 "$GRM_ROOT/bin/job-slots" acquire --holder "$holder" --units 1
   [ "$status" -eq 2 ]
 }
+
+@test "asking for parked units back restarts the record's clock" {
+  start_holder; first=$holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$first" --units 3
+  "$GRM_ROOT/bin/job-slots" park --holder "$first"
+  start_holder; second=$holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$second" --units 3
+  parked_since=$("$GRM_ROOT/bin/job-slots" status --raw | awk -v holder="$first" '$3 == holder {print $9}')
+  sleep 1.1
+  "$GRM_ROOT/bin/job-slots" unpark --holder "$first" > /dev/null 2>&1 &
+  processes+=("$!")
+  is_unparking() {
+    local since
+    since=$("$GRM_ROOT/bin/job-slots" status --raw | awk -v holder="$first" '$1 == "parked" && $3 == holder {print $9}')
+    [[ -n $since ]] && ((since > parked_since))
+  }
+  wait_for is_unparking
+}

@@ -1,0 +1,221 @@
+{
+  "schema": 1,
+  "generated_at": 1767268800,
+  "host": {
+    "cpus": 6,
+    "load_1m": 4.31,
+    "max_load": 6,
+    "memory_available_mb": 5270,
+    "min_memory_mb": 3072
+  },
+  "runners": [
+    {
+      "name": "mobile-app",
+      "repository": "org/mobile-app",
+      "units": 3,
+      "labels": "self-hosted,linux,emulator",
+      "unit": "grm-runner-mobile-app.service",
+      "unit_state": "active",
+      "worker_pid": 51120
+    },
+    {
+      "name": "tablet-app",
+      "repository": "org/tablet-app",
+      "units": 3,
+      "labels": "self-hosted,linux,emulator",
+      "unit": "grm-runner-tablet-app.service",
+      "unit_state": "active",
+      "worker_pid": 52291
+    },
+    {
+      "name": "web-app",
+      "repository": "org/web-app",
+      "units": 2,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-web-app.service",
+      "unit_state": "active",
+      "worker_pid": 52877
+    },
+    {
+      "name": "data-pipeline",
+      "repository": "org/data-pipeline",
+      "units": 2,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-data-pipeline.service",
+      "unit_state": "active",
+      "worker_pid": 53310
+    },
+    {
+      "name": "api",
+      "repository": "org/api",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-api.service",
+      "unit_state": "active",
+      "worker_pid": 53402
+    },
+    {
+      "name": "docs-site",
+      "repository": "org/docs-site",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-docs-site.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "infra-tools",
+      "repository": "org/infra-tools",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-infra-tools.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "legacy-tools",
+      "repository": "org/legacy-tools",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-legacy-tools.service",
+      "unit_state": "inactive",
+      "worker_pid": null
+    }
+  ],
+  "slots": {
+    "capacity": 6,
+    "used": 5,
+    "max_wait_seconds": 2700,
+    "records": [
+      {
+        "kind": "holding",
+        "ticket": 38,
+        "holder_pid": 51120,
+        "units": 3,
+        "label": "org/mobile-app",
+        "since": 1767267938,
+        "unparking": false
+      },
+      {
+        "kind": "parked",
+        "ticket": 40,
+        "holder_pid": 52291,
+        "units": 3,
+        "label": "org/tablet-app",
+        "since": 1767268429,
+        "unparking": false
+      },
+      {
+        "kind": "holding",
+        "ticket": 41,
+        "holder_pid": 52877,
+        "units": 2,
+        "label": "org/web-app",
+        "since": 1767268606,
+        "unparking": false
+      },
+      {
+        "kind": "queued",
+        "ticket": 42,
+        "holder_pid": 53310,
+        "units": 2,
+        "label": "org/data-pipeline",
+        "since": 1767268692,
+        "unparking": false
+      },
+      {
+        "kind": "queued",
+        "ticket": 43,
+        "holder_pid": 53402,
+        "units": 1,
+        "label": "org/api",
+        "since": 1767268774,
+        "unparking": false
+      }
+    ]
+  },
+  "device_lock": {
+    "state": "held",
+    "holder": {
+      "repository": "org/mobile-app",
+      "run_id": "8123456789",
+      "job": "e2e-android",
+      "pid": 51644,
+      "since": 1767268145,
+      "alive": true
+    },
+    "watchdog": {
+      "min_age_seconds": 600,
+      "kill": false,
+      "stale": []
+    }
+  },
+  "events": [
+    {
+      "at": 1767267385,
+      "kind": "release",
+      "subject": "org/docs-site",
+      "detail": "1 units, was holding"
+    },
+    {
+      "at": 1767267932,
+      "kind": "queue",
+      "subject": "org/mobile-app",
+      "detail": "ticket 38, 3 units"
+    },
+    {
+      "at": 1767267938,
+      "kind": "admit",
+      "subject": "org/mobile-app",
+      "detail": "ticket 38, 3 units after 6s; used 4/6"
+    },
+    {
+      "at": 1767268145,
+      "kind": "lock-acquire",
+      "subject": "org/mobile-app",
+      "detail": "job e2e-android"
+    },
+    {
+      "at": 1767268260,
+      "kind": "reap",
+      "subject": "org/legacy-tools",
+      "detail": "pid 49071, holding, 1 units"
+    },
+    {
+      "at": 1767268398,
+      "kind": "admit",
+      "subject": "org/tablet-app",
+      "detail": "ticket 40, 3 units after 2s; used 6/6"
+    },
+    {
+      "at": 1767268428,
+      "kind": "lock-wait",
+      "subject": "org/tablet-app",
+      "detail": "device busy"
+    },
+    {
+      "at": 1767268429,
+      "kind": "park",
+      "subject": "org/tablet-app",
+      "detail": "3 units returned while waiting for the device"
+    },
+    {
+      "at": 1767268606,
+      "kind": "admit",
+      "subject": "org/web-app",
+      "detail": "ticket 41, 2 units after 0s; used 5/6"
+    },
+    {
+      "at": 1767268692,
+      "kind": "queue",
+      "subject": "org/data-pipeline",
+      "detail": "ticket 42, 2 units"
+    },
+    {
+      "at": 1767268774,
+      "kind": "queue",
+      "subject": "org/api",
+      "detail": "ticket 43, 1 units"
+    }
+  ]
+}

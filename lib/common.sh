@@ -37,6 +37,7 @@ load_config() {
   : "${GRM_WATCHDOG_KILL_ALLOW:=}" "${GRM_UNIT_PREFIX:=grm-runner-}"
   : "${GRM_SYSTEMD_USER_DIR:=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
   : "${GRM_SYSTEMCTL:=systemctl --user}" "${GRM_PROC:=/proc}"
+  : "${GRM_EVENTS_MAX:=500}"
 }
 load_config
 
@@ -82,6 +83,45 @@ find_worker_pid() {
     process=${fields[1]:-0}
   done
   return 0
+}
+
+# Report flock holders other than the legitimate wrapper once their process age
+# reaches the minimum, one "pid fd age start comm" line each. Never signals anything.
+find_stale_lock_holders() {
+  local lock=$1 min_age=$2 legitimate_holder=$3 uptime ticks process number start age comm
+  read -r uptime _ < /proc/uptime
+  ticks=$(getconf CLK_TCK)
+  while read -r process number; do
+    [[ $process != "$legitimate_holder" ]] || continue
+    start=$(get_start_time "$process")
+    [[ -n $start ]] || continue
+    age=$(awk -v uptime="$uptime" -v start="$start" -v ticks="$ticks" 'BEGIN {printf "%.0f", int(uptime - start / ticks)}')
+    ((age >= min_age)) || continue
+    { IFS= read -r comm < "/proc/$process/comm"; } 2>/dev/null || continue
+    printf '%s %s %s %s %s\n' "$process" "$number" "$age" "$start" "$comm"
+  done < <(find_lock_holders "$lock")
+}
+
+# Append "epoch kind subject detail" to the bounded event log read by the status
+# views. Best effort: logging never fails a gate, and an event is dropped when
+# the log stays locked for a second, so a stuck reader cannot stall a gate.
+# The log is rewritten in place under events.lock, never replaced.
+log_event() {
+  local kind=$1 subject=${2:-unknown} detail=${3:-} events_fd count kept
+  if ! is_uint "$GRM_EVENTS_MAX" || ((GRM_EVENTS_MAX == 0)); then return 0; fi
+  subject=${subject//[[:space:]]/_}
+  detail=${detail//[[:cntrl:]]/ }
+  (
+    mkdir -p "$GRM_STATE_DIR"
+    exec {events_fd}>"$GRM_STATE_DIR/events.lock"
+    flock -w 1 "$events_fd" || exit 0
+    printf '%s %s %s %s\n' "$(date +%s)" "$kind" "${subject:-unknown}" "$detail" >> "$GRM_STATE_DIR/events.log"
+    count=$(wc -l < "$GRM_STATE_DIR/events.log")
+    if ((count > GRM_EVENTS_MAX * 2)); then
+      kept=$(tail -n "$GRM_EVENTS_MAX" "$GRM_STATE_DIR/events.log")
+      printf '%s\n' "$kept" > "$GRM_STATE_DIR/events.log"
+    fi
+  ) 2>/dev/null || true
 }
 
 notice() { printf '::notice::%s\n' "$*"; }
