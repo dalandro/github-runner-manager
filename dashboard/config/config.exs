@@ -1,12 +1,13 @@
 import Config
 
 # Loopback only, by design: the page is unauthenticated and read-only. See
-# docs/dashboard.md before changing the address or the origin check.
+# docs/dashboard.md before changing the address. The Host and origin checks
+# share one list of names (DashboardWeb.AllowedHosts).
 config :dashboard, DashboardWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   http: [ip: {127, 0, 0, 1}],
-  check_origin: ["//localhost", "//127.0.0.1"],
+  check_origin: {DashboardWeb.AllowedHosts, :origin_allowed?, []},
   render_errors: [formats: [html: DashboardWeb.ErrorHTML], layout: false],
   pubsub_server: Dashboard.PubSub,
   # Salts namespace signed data; the secret is secret_key_base (config/runtime.exs).

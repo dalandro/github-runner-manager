@@ -5,6 +5,9 @@ defmodule Dashboard.Application do
 
   @impl true
   def start(_type, _args) do
+    # A mistyped host name stops the boot here, not on the first request.
+    DashboardWeb.AllowedHosts.list()
+
     children =
       [
         {Phoenix.PubSub, name: Dashboard.PubSub},

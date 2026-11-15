@@ -16,6 +16,10 @@ if config_env() != :test do
     http: [port: String.to_integer(System.get_env("PORT", "4290"))],
     secret_key_base: secret_key_base
 
+  # Extra host names a proxy on this machine serves the page under; validated
+  # when the application starts. The listening address does not change.
+  config :dashboard, allowed_hosts: System.get_env("GRM_DASHBOARD_ALLOWED_HOSTS")
+
   source =
     case System.get_env("GRM_DASHBOARD_SOURCE", "command") do
       "command" ->
