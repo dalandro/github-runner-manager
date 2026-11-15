@@ -30,3 +30,38 @@ jobs:
         run: test/vendor/bats-core/bin/bats test/
       - name: Check private terms (no-op without local terms)
         run: scripts/check-no-private-terms.sh
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MIX_ENV: test
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: dashboard/.tool-versions
+          version-type: strict
+      - uses: actions/cache@v4
+        with:
+          path: |
+            dashboard/deps
+            dashboard/_build
+          key: dashboard-${{ runner.os }}-${{ hashFiles('dashboard/.tool-versions', 'dashboard/mix.lock') }}
+      - name: Fetch dependencies
+        run: mix deps.get --check-locked
+      - name: Check formatting
+        run: mix format --check-formatted
+      - name: Compile
+        run: mix compile --warnings-as-errors
+      - name: Test
+        run: mix test
+      - name: Compile for the smoke test
+        run: MIX_ENV=prod mix compile
+      - name: Smoke test the running server
+        working-directory: .
+        run: |
+          scripts/fetch-test-deps.sh
+          test/vendor/bats-core/bin/bats test/dashboard-smoke.bats
