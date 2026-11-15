@@ -172,6 +172,11 @@ quicker start, build a release once and the launcher will use it:
 cd dashboard && MIX_ENV=prod mix release
 ```
 
+A built release always wins over the source, so rebuild it after updating the
+checkout. Without a release, run `mix deps.get` in `dashboard/` after an update
+that changes `mix.lock`; the launcher fetches packages on the first run only.
+If the checkout path contains spaces, quote it in the unit's `ExecStart`.
+
 ## Development
 
 ```bash
