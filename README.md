@@ -84,6 +84,24 @@ is `config.env` beside this README; `GRM_CONFIG` selects another file. See
 paths. The install reserves four `.env` keys: both `ACTIONS_RUNNER_HOOK_JOB_*`
 keys, `GRM_JOB_UNITS`, and `GRM_CONFIG`.
 
+## Dashboard
+
+![Dashboard showing invented demo data](docs/images/dashboard-desktop-light.png)
+
+A local, read-only page for keeping an eye on the host: runners, slot pool,
+queue, device lock, load gate and recent events, updating as they change. Try it
+with invented data, without configuring anything:
+
+```bash
+bin/grm-dashboard --demo   # then open http://127.0.0.1:4290
+```
+
+It is a small Phoenix LiveView app in `dashboard/` and needs Elixir; without it,
+`bin/grm-status --watch` shows the same state in the terminal. It listens on
+127.0.0.1 only and has no authentication: never expose the port, use an SSH
+tunnel (`ssh -L 4290:127.0.0.1:4290 user@host`) to look from elsewhere. Design,
+security and trade-offs: [docs/dashboard.md](docs/dashboard.md).
+
 ## Design and limits
 
 [Job slots](docs/job-slots.md) bound admitted weights, not CPU or memory usage.
@@ -131,6 +149,11 @@ a CI run has passed.
 
 The cancellation path with `exec` is not verified on a real runner.
 
+The dashboard has its own ExUnit suite (parsing, derived values, the poller, the
+page in its main states) and a smoke test of the running server. It has been
+exercised with demo data and stubbed status commands only, not on a host with
+real runners.
+
 Not tested: real runners and GitHub job hooks, real emulators or adb, systemd
 itself, real memory pressure, or multi-day operation. No performance measurements
 are claimed. Validate on a disposable host before depending on it.
@@ -139,6 +162,7 @@ are claimed. Validate on a disposable host before depending on it.
 scripts/fetch-test-deps.sh # Network required only if the pinned bats is absent.
 test/vendor/bats-core/bin/bats test/
 shellcheck bin/* hooks/* lib/*.sh scripts/*.sh test/*.bash
+(cd dashboard && mix deps.get && mix check) # Needs Elixir; see dashboard/.tool-versions.
 ```
 
 ## Keeping private details out
