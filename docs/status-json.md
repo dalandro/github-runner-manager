@@ -1,0 +1,61 @@
+# Status as JSON
+
+`grm-status --json` prints one JSON document describing everything the gates
+know right now. It is the only seam between the Bash tools and any other view:
+the [dashboard](dashboard.md) reads this document and nothing else. The command
+is read-only: it creates no state, takes the slot state lock only as long as a
+read needs, never probes the device lock with flock, and never signals a
+process, whatever the watchdog's kill setting.
+
+`grm-status --watch [seconds]` repeats the plain text view in the terminal
+(default every 2 seconds) for hosts where a browser view is not wanted.
+
+## Schema version 1
+
+```json
+{
+  "schema": 1,
+  "generated_at": 1767268800,
+  "host": {"cpus": 6, "load_1m": 4.31, "max_load": 6, "memory_available_mb": 5270, "min_memory_mb": 3072},
+  "runners": [
+    {"name": "web-app", "repository": "org/web-app", "units": 2, "labels": "self-hosted,linux",
+     "unit": "grm-runner-web-app.service", "unit_state": "active", "worker_pid": 52877}
+  ],
+  "slots": {
+    "capacity": 6, "used": 5, "max_wait_seconds": 2700,
+    "records": [
+      {"kind": "holding", "ticket": 41, "holder_pid": 52877, "units": 2, "label": "org/web-app",
+       "since": 1767268606, "unparking": false}
+    ]
+  },
+  "device_lock": {
+    "state": "held",
+    "holder": {"repository": "org/mobile-app", "run_id": "8123456789", "job": "e2e-android",
+               "pid": 51644, "since": 1767268145, "alive": true},
+    "watchdog": {"min_age_seconds": 600, "kill": false,
+                 "stale": [{"pid": 50112, "fd": 17, "age_seconds": 1840, "command": "adb"}]}
+  },
+  "events": [
+    {"at": 1767268606, "kind": "admit", "subject": "org/web-app", "detail": "ticket 41, 2 units after 0s; used 5/6"}
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `schema` | Integer version. Additive changes keep the number; a removed or re-typed field raises it. Readers must reject versions they do not know. |
+| `generated_at` | Epoch seconds when the document was produced. All other times are epoch seconds too. |
+| `host.load_1m`, `host.memory_available_mb` | Current readings; `null` when unavailable. `max_load` and `min_memory_mb` are the `wait-for-load` thresholds: the gate passes when load is below the first and memory at or above the second. |
+| `runners[]` | One entry per `GRM_RUNNERS` line, in configuration order. `unit_state` is the first word `systemctl is-active` prints (`active`, `inactive`, `failed`, ...) or `unknown`. `worker_pid` is the job worker process whose executable lives in that runner's directory, or `null` when the runner is idle. |
+| `slots.records[]` | Live records after in-memory reaping, in state-file order. `kind` is `holding`, `queued` or `parked`; queue order is ascending `ticket`. `holder_pid` equals a runner's `worker_pid` when the job came through the runner hooks. `since` is the last transition (`null` for records older than the field). `unparking` is true while a parked job is actively asking for its units back. |
+| `device_lock.state` | `absent` (never used), `free` or `held`, from the lock's flock holders. |
+| `device_lock.holder` | The wrapper's holder file, or `null`. `alive` says whether that wrapper process still exists; a `held` lock without a live holder is a leaked descriptor. |
+| `device_lock.watchdog.stale[]` | What `stale-lock-watchdog` would report now: flock holders other than the live wrapper, older than `min_age_seconds`. `kill` reports the configured mode only. |
+| `events[]` | The newest 50 lines of the [event log](events.md), oldest first. |
+
+Strings are ASCII: any other byte, and any control character, is written as
+`?`. Numbers that cannot be read are `null`, never a string.
+
+The bundled demo document, `dashboard/priv/demo/status.json`, is checked by the
+suite to have exactly the key shape of real output, so the demo cannot drift
+from the schema.

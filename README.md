@@ -73,7 +73,8 @@ state directory, device lock, and user account. Use a local filesystem.
 
    Slots apply to the whole job through runner hooks. See the complete
    [consumer workflow](docs/consumer-workflow.md).
-5. Inspect with `bin/grm-status`. Remove management with
+5. Inspect with `bin/grm-status` (`--watch` to keep it on screen, `--json` for
+   the [machine-readable form](docs/status-json.md)). Remove management with
    `bin/grm-uninstall-runner repo-a`; registration and runner files remain.
 
 Configuration is sourced Bash: trust it like executable code. Exported `GRM_*`

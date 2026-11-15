@@ -37,7 +37,7 @@ read_state() {
     if [[ $kind == next ]]; then next=$ticket; continue; fi
     case $kind in holding|queued|parked) ;; *) continue;; esac
     # Records written before the since field existed read as 0: unknown.
-    is_uint "${since:-}" || since=0
+    [[ ${since:-} =~ ^[0-9]+$ ]] || since=0
     if ! is_alive "$process" "$start"; then
       reaped+=("$name pid $process, $kind, $weight units"); continue
     fi
