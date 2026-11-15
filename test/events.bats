@@ -72,6 +72,21 @@ lock-release org/repo-a" ]
   grep -q ' stale sleep pid ' "$GRM_STATE_DIR/events.log"
 }
 
+@test "watchdog logs a stale holder once however often it runs" {
+  bash -c 'exec 17>"$1"; flock 17; sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$2"' _ "$GRM_DEVICE_LOCK" "$BATS_TEST_TMPDIR/leaked"
+  processes+=("$(<"$BATS_TEST_TMPDIR/leaked")")
+  run "$GRM_ROOT/bin/stale-lock-watchdog" --min-age 0
+  run "$GRM_ROOT/bin/stale-lock-watchdog" --min-age 0
+  [ "$status" -eq 1 ]
+  [[ $output == *'stale: pid '* ]]
+  [ "$(grep -c ' stale ' "$GRM_STATE_DIR/events.log")" -eq 1 ]
+  kill -KILL "$(<"$BATS_TEST_TMPDIR/leaked")"
+  wait_for flock -n "$GRM_DEVICE_LOCK" true
+  run "$GRM_ROOT/bin/stale-lock-watchdog" --min-age 0
+  [ "$status" -eq 0 ]
+  [ ! -s "$GRM_STATE_DIR/watchdog.seen" ]
+}
+
 @test "the event log is bounded and keeps the newest entries" {
   # shellcheck source=lib/common.sh
   source "$GRM_ROOT/lib/common.sh"

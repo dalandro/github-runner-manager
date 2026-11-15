@@ -16,7 +16,7 @@ epoch kind subject detail...
 | `release` | `job-slots release` | A holder gave its units back. |
 | `reap` | any writing `job-slots` call | A record's process was gone and the record was dropped. |
 | `lock-wait` / `lock-acquire` / `lock-release` / `lock-timeout` | `with-device-lock` | Device lock life cycle. |
-| `stale` / `kill` | `stale-lock-watchdog` | A stale lock holder was found; TERM was sent. |
+| `stale` / `kill` | `stale-lock-watchdog` | A stale lock holder was found (logged once per holder, however often the watchdog runs); TERM was sent. |
 
 The subject is the slot label or repository; whitespace in it becomes `_`.
 

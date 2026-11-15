@@ -29,11 +29,18 @@ if ((kill_stale && ${#allowed_names[@]} == 0)); then
 fi
 legitimate_holder=0
 if ((legitimate)); then legitimate_holder=$holder; fi
+# Holders already reported, as "pid start" lines: a leak that stays is logged
+# once, not on every timer run, so it cannot push the gates' events out.
+seen_file=$GRM_STATE_DIR/watchdog.seen seen='' current=''
+if [[ -r $seen_file ]]; then seen=$(< "$seen_file"); fi
 found=0
 while read -r process number age start comm; do
   printf 'stale: pid %s (%s, age %ss) holds %s via fd %s; recorded holder: %s\n' "$process" "$comm" "$age" "$lock" "$number" "$recorded"
   if ((legitimate == 0)); then printf 'lock held but holder file missing or holder dead\n'; fi
-  log_event stale "$comm" "pid $process, age ${age}s, fd $number"
+  if [[ $'\n'$seen$'\n' != *$'\n'"$process $start"$'\n'* ]]; then
+    log_event stale "$comm" "pid $process, age ${age}s, fd $number"
+  fi
+  current+="$process $start"$'\n'
   found=1
   if ((kill_stale)); then
     allowed=0
@@ -48,4 +55,7 @@ while read -r process number age start comm; do
     fi
   fi
 done < <(find_stale_lock_holders "$lock" "$min_age" "$legitimate_holder")
+if [[ -n $current || -e $seen_file ]]; then
+  { mkdir -p "$GRM_STATE_DIR" && printf '%s' "$current" > "$seen_file"; } 2>/dev/null || true
+fi
 exit "$found"
