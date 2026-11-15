@@ -127,9 +127,9 @@ if [[ $command == acquire ]]; then
 else
   if ((own_ticket == 0)); then write_state; exit 0; fi
   for index in "${!records[@]}"; do
-    read -r kind ticket process start _ _ weight name since <<< "${records[index]}"
+    read -r kind ticket process start _ _ weight name _ <<< "${records[index]}"
     if ((ticket == own_ticket)); then
-      records[index]="$kind $ticket $process $start $$ $(get_start_time "$$") $weight $name $since"
+      records[index]="$kind $ticket $process $start $$ $(get_start_time "$$") $weight $name $(date +%s)"
       log_event unpark "$name" "ticket $ticket asks for $weight units back"
     fi
   done

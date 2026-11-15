@@ -16,7 +16,7 @@ kind ticket holder-pid holder-start waiter-pid waiter-start units label since
 ```
 
 `since` is the epoch second of the record's last transition (queued, admitted,
-or parked); the status views derive wait and hold times from it. Records written
+parked, or asking for parked units back); the status views derive wait and hold times from it. Records written
 before the field existed read as 0, shown as unknown.
 
 The `next N` header records the next ticket. Labels replace characters outside
