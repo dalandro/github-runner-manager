@@ -20,13 +20,17 @@ lock=$(readlink -m "$lock")
 mkdir -p "$(dirname "$lock")"
 exec {lock_fd}>"$lock"
 child='' child_start='' timer='' cancel=0 wrote_holder=0 phase=waiting
+repository=${GITHUB_REPOSITORY:-unknown} acquired=0
 wrapper_start=$(get_start_time "$$")
 
 # Invoked only from the EXIT trap.
 # shellcheck disable=SC2329
 cleanup() {
   if [[ -n $timer ]]; then kill "$timer" 2>/dev/null || true; wait "$timer" 2>/dev/null || true; fi
-  if ((wrote_holder)); then rm -f "$lock.holder"; fi
+  if ((wrote_holder)); then
+    rm -f "$lock.holder"
+    log_event lock-release "$repository" "held for $(($(date +%s) - acquired))s"
+  fi
 }
 trap cleanup EXIT
 
@@ -75,6 +79,7 @@ if ! flock -n "$lock_fd"; then
   recorded=unknown
   if [[ -r $lock.holder ]]; then IFS= read -r recorded < "$lock.holder" || true; fi
   notice "with-device-lock: waiting for $lock; holder: $recorded"
+  log_event lock-wait "$repository" "device busy"
   if [[ $GRM_DEVICE_LOCK_PARK != 0 && -n $holder ]]; then
     "$GRM_ROOT/bin/job-slots" park --holder "$holder" {lock_fd}>&-
     parked=1
@@ -89,12 +94,15 @@ if ! flock -n "$lock_fd"; then
     recorded=unknown
     if [[ -r $lock.holder ]]; then IFS= read -r recorded < "$lock.holder" || true; fi
     error "with-device-lock: timed out waiting for $lock; holder: $recorded"
+    log_event lock-timeout "$repository" "gave up after ${timeout}s"
     exit "$result"
   fi
 fi
 if ((cancel)); then exit "$cancel"; fi
-printf '%s %s %s %s %s %s\n' "${GITHUB_REPOSITORY:-unknown}" "${GITHUB_RUN_ID:-unknown}" "${GITHUB_JOB:-unknown}" "$$" "$wrapper_start" "$(date +%s)" > "$lock.holder"
+acquired=$(date +%s)
+printf '%s %s %s %s %s %s\n' "$repository" "${GITHUB_RUN_ID:-unknown}" "${GITHUB_JOB:-unknown}" "$$" "$wrapper_start" "$acquired" > "$lock.holder"
 wrote_holder=1
+log_event lock-acquire "$repository" "job ${GITHUB_JOB:-unknown}"
 phase=running
 if ((parked)); then
   ( trap - INT QUIT; exec "$GRM_ROOT/bin/job-slots" unpark --holder "$holder" ) {lock_fd}>&- &

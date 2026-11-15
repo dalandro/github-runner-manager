@@ -27,18 +27,24 @@ label=${label//[^a-zA-Z0-9._\/:\-]/_}
 label=${label:-job}
 directory=$GRM_STATE_DIR/slots
 state=$directory/state
-records=() next=1
+records=() reaped=() next=1
 
 read_state() {
-  local kind ticket process start waiter waiter_start weight name
+  local kind ticket process start waiter waiter_start weight name since
   records=() next=1
   [[ -f $state ]] || return 0
-  while read -r kind ticket process start waiter waiter_start weight name; do
+  while read -r kind ticket process start waiter waiter_start weight name since; do
     if [[ $kind == next ]]; then next=$ticket; continue; fi
     case $kind in holding|queued|parked) ;; *) continue;; esac
-    is_alive "$process" "$start" || continue
-    if [[ $kind == queued ]]; then is_alive "$waiter" "$waiter_start" || continue; fi
-    records+=("$kind $ticket $process $start $waiter $waiter_start $weight $name")
+    # Records written before the since field existed read as 0: unknown.
+    [[ ${since:-} =~ ^[0-9]+$ ]] || since=0
+    if ! is_alive "$process" "$start"; then
+      reaped+=("$name pid $process, $kind, $weight units"); continue
+    fi
+    if [[ $kind == queued ]] && ! is_alive "$waiter" "$waiter_start"; then
+      reaped+=("$name pid $process, $kind, $weight units, waiter gone"); continue
+    fi
+    records+=("$kind $ticket $process $start $waiter $waiter_start $weight $name $since")
   done < "$state"
 }
 
@@ -50,6 +56,10 @@ write_state() {
     if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi
   } > "$temporary"
   mv -f "$temporary" "$state"
+  # Reaps are logged where they become durable; status reaps in memory only.
+  local entry
+  for entry in "${reaped[@]}"; do log_event reap "${entry%% *}" "${entry#* }"; done
+  reaped=()
 }
 
 if [[ $command == status && ! -f $directory/lock ]]; then
@@ -75,7 +85,7 @@ if [[ $command == status ]]; then
     if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi
   else
     printf 'capacity %s used %s\n' "$GRM_SLOTS_CAPACITY" "$used"
-    printf 'KIND TICKET HOLDER START WAITER START UNITS LABEL\n'
+    printf 'KIND TICKET HOLDER START WAITER START UNITS LABEL SINCE\n'
     if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi
   fi
   exit 0
@@ -85,10 +95,16 @@ if [[ $command == acquire && -z $holder_start ]]; then usage_error 'job-slots: h
 if [[ $command == release || $command == park ]]; then
   updated=()
   for record in "${records[@]}"; do
-    read -r kind ticket process start waiter waiter_start weight name <<< "$record"
+    read -r kind ticket process start waiter waiter_start weight name since <<< "$record"
     if [[ $process == "$holder" ]]; then
-      if [[ $command == release ]]; then continue; fi
-      if [[ $kind == holding ]]; then record="parked $ticket $process $start 0 0 $weight $name"; fi
+      if [[ $command == release ]]; then
+        log_event release "$name" "$weight units, was $kind"
+        continue
+      fi
+      if [[ $kind == holding ]]; then
+        record="parked $ticket $process $start 0 0 $weight $name $(date +%s)"
+        log_event park "$name" "$weight units returned while waiting for the device"
+      fi
     fi
     updated+=("$record")
   done
@@ -106,13 +122,15 @@ done
 if [[ $command == acquire ]]; then
   own_ticket=$next
   next=$((next + 1))
-  records+=("queued $own_ticket $holder $holder_start $$ $(get_start_time "$$") $units $label")
+  records+=("queued $own_ticket $holder $holder_start $$ $(get_start_time "$$") $units $label $(date +%s)")
+  log_event queue "$label" "ticket $own_ticket, $units units"
 else
   if ((own_ticket == 0)); then write_state; exit 0; fi
   for index in "${!records[@]}"; do
-    read -r kind ticket process start _ _ weight name <<< "${records[index]}"
+    read -r kind ticket process start _ _ weight name _ <<< "${records[index]}"
     if ((ticket == own_ticket)); then
-      records[index]="$kind $ticket $process $start $$ $(get_start_time "$$") $weight $name"
+      records[index]="$kind $ticket $process $start $$ $(get_start_time "$$") $weight $name $(date +%s)"
+      log_event unpark "$name" "ticket $ticket asks for $weight units back"
     fi
   done
 fi
@@ -144,11 +162,16 @@ while :; do
   fi
   if ((now - started >= GRM_SLOTS_MAX_WAIT)); then escaped=1; fi
   if (( (fits && priority) || escaped )); then
-    read -r _ ticket process start waiter waiter_start weight name <<< "${records[own_index]}"
-    records[own_index]="holding $ticket $process $start 0 0 $weight $name"
+    read -r _ ticket process start waiter waiter_start weight name _ <<< "${records[own_index]}"
+    records[own_index]="holding $ticket $process $start 0 0 $weight $name $now"
     write_state
     flock -u "$lock_fd"
-    if ((escaped)); then warning "job-slots: max wait exceeded; admitting $holder ($units units), previously used $used"; fi
+    if ((escaped)); then
+      warning "job-slots: max wait exceeded; admitting $holder ($units units), previously used $used"
+      log_event overcommit "$name" "ticket $ticket, $weight units admitted after max wait; used $((used + units))/$GRM_SLOTS_CAPACITY"
+    else
+      log_event admit "$name" "ticket $ticket, $weight units after $((now - started))s; used $((used + units))/$GRM_SLOTS_CAPACITY"
+    fi
     notice "job-slots: admitted $holder ($units units); used $((used + units))/$GRM_SLOTS_CAPACITY"
     exit 0
   fi

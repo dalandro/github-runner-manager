@@ -12,8 +12,12 @@ Holding weights count against capacity. Oversized requests can enter alone.
 Default capacity is 6 units; `GRM_SLOTS_MAX_WAIT` defaults to 2700 seconds.
 
 ```text
-kind ticket holder-pid holder-start waiter-pid waiter-start units label
+kind ticket holder-pid holder-start waiter-pid waiter-start units label since
 ```
+
+`since` is the epoch second of the record's last transition (queued, admitted,
+parked, or asking for parked units back); the status views derive wait and hold times from it. Records written
+before the field existed read as 0, shown as unknown.
 
 The `next N` header records the next ticket. Labels replace characters outside
 `[A-Za-z0-9._/:-]` with underscores. `status --raw` prints records after reaping

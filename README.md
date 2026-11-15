@@ -73,7 +73,8 @@ state directory, device lock, and user account. Use a local filesystem.
 
    Slots apply to the whole job through runner hooks. See the complete
    [consumer workflow](docs/consumer-workflow.md).
-5. Inspect with `bin/grm-status`. Remove management with
+5. Inspect with `bin/grm-status` (`--watch` to keep it on screen, `--json` for
+   the [machine-readable form](docs/status-json.md)). Remove management with
    `bin/grm-uninstall-runner repo-a`; registration and runner files remain.
 
 Configuration is sourced Bash: trust it like executable code. Exported `GRM_*`
@@ -82,6 +83,24 @@ is `config.env` beside this README; `GRM_CONFIG` selects another file. See
 [config.example.env](config.example.env) for every operator setting. Use absolute
 paths. The install reserves four `.env` keys: both `ACTIONS_RUNNER_HOOK_JOB_*`
 keys, `GRM_JOB_UNITS`, and `GRM_CONFIG`.
+
+## Dashboard
+
+![Dashboard showing invented demo data](docs/images/dashboard-desktop-light.png)
+
+A local, read-only page for keeping an eye on the host: runners, slot pool,
+queue, device lock, load gate and recent events, updating as they change. Try it
+with invented data, without configuring anything:
+
+```bash
+bin/grm-dashboard --demo   # then open http://127.0.0.1:4290
+```
+
+It is a small Phoenix LiveView app in `dashboard/` and needs Elixir; without it,
+`bin/grm-status --watch` shows the same state in the terminal. It listens on
+127.0.0.1 only and has no authentication: never expose the port, use an SSH
+tunnel (`ssh -L 4290:127.0.0.1:4290 user@host`) to look from elsewhere. Design,
+security and trade-offs: [docs/dashboard.md](docs/dashboard.md).
 
 ## Design and limits
 
@@ -130,6 +149,11 @@ a CI run has passed.
 
 The cancellation path with `exec` is not verified on a real runner.
 
+The dashboard has its own ExUnit suite (parsing, derived values, the poller, the
+page in its main states) and a smoke test of the running server. It has been
+exercised with demo data and stubbed status commands only, not on a host with
+real runners.
+
 Not tested: real runners and GitHub job hooks, real emulators or adb, systemd
 itself, real memory pressure, or multi-day operation. No performance measurements
 are claimed. Validate on a disposable host before depending on it.
@@ -138,6 +162,7 @@ are claimed. Validate on a disposable host before depending on it.
 scripts/fetch-test-deps.sh # Network required only if the pinned bats is absent.
 test/vendor/bats-core/bin/bats test/
 shellcheck bin/* hooks/* lib/*.sh scripts/*.sh test/*.bash
+(cd dashboard && mix deps.get && mix check) # Needs Elixir; see dashboard/.tool-versions.
 ```
 
 ## Keeping private details out

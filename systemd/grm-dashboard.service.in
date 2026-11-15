@@ -1,0 +1,21 @@
+# Template for running the dashboard as a systemd user unit. Replace
+# @GRM_ROOT@ with the absolute path of this checkout, save the result as
+# ~/.config/systemd/user/grm-dashboard.service, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now grm-dashboard
+# See docs/dashboard.md. The dashboard listens on 127.0.0.1 only.
+[Unit]
+Description=github-runner-manager dashboard (loopback only)
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=@GRM_ROOT@/bin/grm-dashboard
+Restart=on-failure
+RestartSec=10
+Nice=10
+# Uncomment when mix is not on the service manager's PATH (version managers):
+#Environment=PATH=/path/to/elixir/bin:/path/to/erlang/bin:/usr/bin:/bin
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

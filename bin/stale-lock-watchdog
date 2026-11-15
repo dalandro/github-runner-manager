@@ -23,32 +23,39 @@ if [[ -r $lock.holder ]]; then
   read -r _ _ _ holder holder_start _ <<< "$recorded"
   if is_alive "$holder" "$holder_start"; then legitimate=1; fi
 fi
-read -r uptime _ < /proc/uptime
-ticks=$(getconf CLK_TCK)
 read -r -a allowed_names <<< "$GRM_WATCHDOG_KILL_ALLOW"
 if ((kill_stale && ${#allowed_names[@]} == 0)); then
   notice 'stale-lock-watchdog: empty allow-list; no processes will be killed'
 fi
+legitimate_holder=0
+if ((legitimate)); then legitimate_holder=$holder; fi
+# Holders already reported, as "pid start" lines: a leak that stays is logged
+# once, not on every timer run, so it cannot push the gates' events out.
+seen_file=$GRM_STATE_DIR/watchdog.seen seen='' current=''
+if [[ -r $seen_file ]]; then seen=$(< "$seen_file"); fi
 found=0
-while read -r process number; do
-  directory=/proc/$process
-  if ((legitimate)) && [[ $process == "$holder" ]]; then continue; fi
-  start=$(get_start_time "$process")
-  [[ -n $start ]] || continue
-  age=$(awk -v uptime="$uptime" -v start="$start" -v ticks="$ticks" 'BEGIN {printf "%.0f", int(uptime - start / ticks)}')
-  ((age >= min_age)) || continue
-  { IFS= read -r comm < "$directory/comm"; } 2>/dev/null || continue
+while read -r process number age start comm; do
   printf 'stale: pid %s (%s, age %ss) holds %s via fd %s; recorded holder: %s\n' "$process" "$comm" "$age" "$lock" "$number" "$recorded"
   if ((legitimate == 0)); then printf 'lock held but holder file missing or holder dead\n'; fi
+  if [[ $'\n'$seen$'\n' != *$'\n'"$process $start"$'\n'* ]]; then
+    log_event stale "$comm" "pid $process, age ${age}s, fd $number"
+  fi
+  current+="$process $start"$'\n'
   found=1
   if ((kill_stale)); then
     allowed=0
     for name in "${allowed_names[@]}"; do if [[ $comm == "$name" ]]; then allowed=1; fi; done
     if ((allowed)); then
-      if is_alive "$process" "$start"; then kill -TERM "$process" 2>/dev/null || true; fi
+      if is_alive "$process" "$start"; then
+        kill -TERM "$process" 2>/dev/null || true
+        log_event kill "$comm" "pid $process sent TERM by the watchdog"
+      fi
     else
       printf 'not killed: not allow-listed\n'
     fi
   fi
-done < <(find_lock_holders "$lock")
+done < <(find_stale_lock_holders "$lock" "$min_age" "$legitimate_holder")
+if [[ -n $current || -e $seen_file ]]; then
+  { mkdir -p "$GRM_STATE_DIR" && printf '%s' "$current" > "$seen_file"; } 2>/dev/null || true
+fi
 exit "$found"

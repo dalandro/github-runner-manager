@@ -2,28 +2,168 @@
 set -euo pipefail
 # shellcheck source=lib/common.sh
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
-(($# == 0)) || usage_error 'usage: grm-status'
-printf 'Runner units\n'
-systemctl_user list-units --all "$GRM_UNIT_PREFIX*" || warning 'grm-status: user service manager unavailable'
-printf '\nBusy workers\n'
-pgrep -a -x Runner.Worker || printf 'none\n'
-printf '\nJob slots\n'
-"$GRM_ROOT/bin/job-slots" status
-printf '\nDevice '
+# Read-only overview. --json is the versioned seam for other views (see
+# docs/status-json.md); --watch repeats the text view in the terminal.
+mode=text interval=2
+case ${1:-} in
+  --json) mode=json; shift;;
+  --watch)
+    mode=watch; shift
+    if (($#)); then interval=$1; shift; fi;;
+esac
+(($# == 0)) || usage_error 'usage: grm-status [--json | --watch [seconds]]'
+if ! is_number "$interval" || [[ $interval =~ ^[0.]+$ ]]; then usage_error 'grm-status: invalid watch interval'; fi
 lock=$(readlink -m "$GRM_DEVICE_LOCK")
-if [[ ! -e $lock ]]; then
-  printf 'lock: absent\n'
-else
-  if [[ -n $(find_lock_holders "$lock") ]]; then printf 'lock: held\n'; else printf 'lock: free\n'; fi
-fi
-if [[ -r $lock.holder ]]; then
-  IFS= read -r recorded < "$lock.holder" || true
-  printf 'recorded holder: %s\n' "$recorded"
-fi
-printf '\nLoad and memory\n'
-if metrics=$(get_load_and_memory); then
-  read -r current available <<< "$metrics"
-  printf 'load (1 min): %s; available: %s MB\n' "$current" "$available"
-else
-  printf 'unavailable\n'
-fi
+
+get_lock_state() {
+  if [[ ! -e $lock ]]; then
+    printf 'absent\n'
+  elif [[ -n $(find_lock_holders "$lock") ]]; then
+    printf 'held\n'
+  else
+    printf 'free\n'
+  fi
+}
+
+render_text() {
+  local recorded metrics current available
+  printf 'Runner units\n'
+  systemctl_user list-units --all "$GRM_UNIT_PREFIX*" || warning 'grm-status: user service manager unavailable'
+  printf '\nBusy workers\n'
+  pgrep -a -x Runner.Worker || printf 'none\n'
+  printf '\nJob slots\n'
+  "$GRM_ROOT/bin/job-slots" status
+  printf '\nDevice lock: %s\n' "$(get_lock_state)"
+  if [[ -r $lock.holder ]]; then
+    IFS= read -r recorded < "$lock.holder" || true
+    printf 'recorded holder: %s\n' "$recorded"
+  fi
+  printf '\nLoad and memory\n'
+  if metrics=$(get_load_and_memory); then
+    read -r current available <<< "$metrics"
+    printf 'load (1 min): %s; available: %s MB\n' "$current" "$available"
+  else
+    printf 'unavailable\n'
+  fi
+}
+
+# JSON output is ASCII: other bytes and control characters become "?".
+json_string() {
+  local LC_ALL=C value=$1
+  value=${value//[^ -~]/?}
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  printf '"%s"' "$value"
+}
+
+# JSON numbers have no leading zeros; anything else prints as null.
+json_number() {
+  if [[ ${1:-} =~ ^(0|[1-9][0-9]*)([.][0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi
+}
+
+# The busy worker of a runner is the worker process whose executable lives in
+# that runner's directory. Prints its PID, or nothing.
+find_runner_worker() {
+  local directory=$1 process comm executable
+  for process in /proc/[0-9]*; do
+    [[ -O $process ]] || continue
+    { IFS= read -r comm < "$process/comm"; } 2>/dev/null || continue
+    [[ $comm == "${GRM_WORKER_COMM:-Runner.Worker}" ]] || continue
+    executable=$(readlink "$process/exe" 2>/dev/null) || continue
+    if [[ $executable == "$directory"/* ]]; then printf '%s\n' "${process##*/}"; return; fi
+  done
+}
+
+render_runners() {
+  local entry name repository units labels unit state worker separator=''
+  for entry in "${GRM_RUNNERS[@]}"; do
+    read -r name repository units labels _ <<< "$entry"
+    unit=$GRM_UNIT_PREFIX$name.service
+    state=$(systemctl_user is-active "$unit" 2>/dev/null) || true
+    state=${state%%$'\n'*}
+    worker=$(find_runner_worker "$(readlink -f "$GRM_RUNNERS_DIR/$name" 2>/dev/null || printf 'missing')")
+    printf '%s\n    {"name": %s, "repository": %s, "units": %s, "labels": %s, "unit": %s, "unit_state": %s, "worker_pid": %s}' \
+      "$separator" "$(json_string "$name")" "$(json_string "$repository")" "$(json_number "$units")" \
+      "$(json_string "${labels:-}")" "$(json_string "$unit")" "$(json_string "${state:-unknown}")" "$(json_number "$worker")"
+    separator=,
+  done
+}
+
+render_slots() {
+  local kind ticket process waiter waiter_start weight name since unparking used=0 separator='' rows=''
+  while read -r kind ticket process _ waiter waiter_start weight name since; do
+    [[ $kind != next ]] || continue
+    if [[ $kind == holding ]]; then used=$((used + weight)); fi
+    unparking=false
+    if [[ $kind == parked ]] && is_alive "$waiter" "$waiter_start"; then unparking=true; fi
+    if [[ ${since:-0} == 0 ]]; then since=null; fi
+    rows+=$(printf '%s\n      {"kind": %s, "ticket": %s, "holder_pid": %s, "units": %s, "label": %s, "since": %s, "unparking": %s}' \
+      "$separator" "$(json_string "$kind")" "$(json_number "$ticket")" "$(json_number "$process")" \
+      "$(json_number "$weight")" "$(json_string "$name")" "$(json_number "$since")" "$unparking")
+    separator=,
+  done < <("$GRM_ROOT/bin/job-slots" status --raw)
+  printf '{\n    "capacity": %s, "used": %s, "max_wait_seconds": %s,\n    "records": [%s\n    ]\n  }' \
+    "$(json_number "$GRM_SLOTS_CAPACITY")" "$used" "$(json_number "$GRM_SLOTS_MAX_WAIT")" "$rows"
+}
+
+render_device_lock() {
+  local recorded repository run job process start since alive holder=null legitimate=0 kill=false
+  local stale_process number age comm separator='' stale='' stale_end=''
+  if [[ -r $lock.holder ]]; then
+    IFS= read -r recorded < "$lock.holder" || true
+    read -r repository run job process start since _ <<< "$recorded"
+    alive=false
+    if is_alive "$process" "$start"; then alive=true; legitimate=$process; fi
+    holder=$(printf '{"repository": %s, "run_id": %s, "job": %s, "pid": %s, "since": %s, "alive": %s}' \
+      "$(json_string "$repository")" "$(json_string "$run")" "$(json_string "$job")" \
+      "$(json_number "$process")" "$(json_number "$since")" "$alive")
+  fi
+  if [[ -e $lock ]] && is_uint "$GRM_WATCHDOG_MIN_AGE"; then
+    while read -r stale_process number age _ comm; do
+      stale+=$(printf '%s\n      {"pid": %s, "fd": %s, "age_seconds": %s, "command": %s}' \
+        "$separator" "$stale_process" "$number" "$age" "$(json_string "$comm")")
+      separator=, stale_end=$'\n    '
+    done < <(find_stale_lock_holders "$lock" "$GRM_WATCHDOG_MIN_AGE" "$legitimate")
+  fi
+  if [[ $GRM_WATCHDOG_KILL == 1 ]]; then kill=true; fi
+  printf '{\n    "state": "%s",\n    "holder": %s,\n    "watchdog": {"min_age_seconds": %s, "kill": %s, "stale": [%s%s]}\n  }' \
+    "$(get_lock_state)" "$holder" "$(json_number "$GRM_WATCHDOG_MIN_AGE")" "$kill" "$stale" "$stale_end"
+}
+
+render_events() {
+  local at kind subject detail separator='' events_fd
+  [[ -r $GRM_STATE_DIR/events.log && -r $GRM_STATE_DIR/events.lock ]] || return 0
+  exec {events_fd}<"$GRM_STATE_DIR/events.lock"
+  flock -s "$events_fd"
+  while read -r at kind subject detail; do
+    [[ $at =~ ^[0-9]+$ ]] || continue
+    printf '%s\n    {"at": %s, "kind": %s, "subject": %s, "detail": %s}' \
+      "$separator" "$at" "$(json_string "$kind")" "$(json_string "$subject")" "$(json_string "$detail")"
+    separator=,
+  done < <(tail -n 50 "$GRM_STATE_DIR/events.log")
+  exec {events_fd}<&-
+}
+
+render_json() {
+  local metrics load=null available=null
+  if metrics=$(get_load_and_memory); then read -r load available <<< "$metrics"; fi
+  printf '{\n  "schema": 1,\n  "generated_at": %s,\n' "$(date +%s)"
+  printf '  "host": {"cpus": %s, "load_1m": %s, "max_load": %s, "memory_available_mb": %s, "min_memory_mb": %s},\n' \
+    "$(json_number "$(getconf _NPROCESSORS_ONLN)")" "$load" "$(json_number "$GRM_MAX_LOAD")" \
+    "$available" "$(json_number "$GRM_MIN_MEM_MB")"
+  printf '  "runners": [%s\n  ],\n' "$(render_runners)"
+  printf '  "slots": %s,\n' "$(render_slots)"
+  printf '  "device_lock": %s,\n' "$(render_device_lock)"
+  printf '  "events": [%s\n  ]\n}\n' "$(render_events)"
+}
+
+case $mode in
+  text) render_text;;
+  json) render_json;;
+  watch)
+    while :; do
+      view=$(render_text 2>&1) || true
+      printf '\033[H\033[2J%s  (every %ss, Ctrl-C to stop)\n\n%s\n' "$(date '+%H:%M:%S')" "$interval" "$view"
+      sleep "$interval"
+    done;;
+esac
