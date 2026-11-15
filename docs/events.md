@@ -20,8 +20,8 @@ epoch kind subject detail...
 
 The subject is the slot label or repository; whitespace in it becomes `_`.
 
-The log is advisory. Writing is best effort and never fails or blocks a gate
-beyond a short flock on `events.lock`; a full disk loses events, not jobs. It is
+The log is advisory. Writing is best effort and never fails a gate. A gate waits
+at most one second for `events.lock` and then drops the event; a full disk loses events, not jobs. It is
 bounded: once it exceeds twice `GRM_EVENTS_MAX` lines (default 500) it is cut
 back to the newest `GRM_EVENTS_MAX`, in place and under the same lock, so the
 file is never replaced under a reader. `GRM_EVENTS_MAX=0` turns it off. Status

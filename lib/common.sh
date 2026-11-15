@@ -103,7 +103,8 @@ find_stale_lock_holders() {
 }
 
 # Append "epoch kind subject detail" to the bounded event log read by the status
-# views. Best effort: logging never fails or delays a gate beyond a short flock.
+# views. Best effort: logging never fails a gate, and an event is dropped when
+# the log stays locked for a second, so a stuck reader cannot stall a gate.
 # The log is rewritten in place under events.lock, never replaced.
 log_event() {
   local kind=$1 subject=${2:-unknown} detail=${3:-} events_fd count kept
@@ -113,7 +114,7 @@ log_event() {
   (
     mkdir -p "$GRM_STATE_DIR"
     exec {events_fd}>"$GRM_STATE_DIR/events.lock"
-    flock "$events_fd"
+    flock -w 1 "$events_fd" || exit 0
     printf '%s %s %s %s\n' "$(date +%s)" "$kind" "${subject:-unknown}" "$detail" >> "$GRM_STATE_DIR/events.log"
     count=$(wc -l < "$GRM_STATE_DIR/events.log")
     if ((count > GRM_EVENTS_MAX * 2)); then

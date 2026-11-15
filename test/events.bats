@@ -93,3 +93,14 @@ lock-release org/repo-a" ]
   "$GRM_ROOT/bin/job-slots" acquire --holder "$holder" --units 1
   has_record holding "$holder"
 }
+
+@test "a held event log lock drops the event instead of blocking the gate" {
+  mkdir -p "$GRM_STATE_DIR"
+  flock "$GRM_STATE_DIR/events.lock" sleep 300 &
+  processes+=("$!")
+  wait_for bash -c '! flock -n "$1" true' _ "$GRM_STATE_DIR/events.lock"
+  start_holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$holder" --units 2 --label org/repo-a
+  has_record holding "$holder"
+  [ ! -s "$GRM_STATE_DIR/events.log" ]
+}
