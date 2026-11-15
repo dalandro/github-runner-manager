@@ -100,6 +100,16 @@ defmodule Dashboard.PollerTest do
     assert %Snapshot{status: nil, error: nil} = Poller.snapshot(poller)
   end
 
+  test "a read that outlives the deadline is killed and reported as a timeout", context do
+    import ExUnit.CaptureLog
+
+    capture_log(fn ->
+      start_poller(context, [], source: {HangingSource, []}, read_timeout: 20)
+
+      assert_receive {:snapshot, %Snapshot{status: nil, error: :timeout}}
+    end)
+  end
+
   test "says whether its source is the demo", context do
     poller =
       start_supervised!(

@@ -6,7 +6,8 @@ defmodule Dashboard.Poller do
   the last good reading (served to every page that mounts), and the failure
   count behind the backoff. Each read runs in a supervised task, so a slow or
   crashing status command neither blocks `snapshot/1` nor takes the poller
-  down; at most one read is in flight.
+  down; at most one read is in flight, and a read still running after
+  `:read_timeout` is killed and counted as a failure.
 
   A new `Dashboard.Snapshot` is broadcast as `{:snapshot, snapshot}` only when
   it differs from the previous one (see `Dashboard.Snapshot.changed?/2`).
@@ -14,8 +15,8 @@ defmodule Dashboard.Poller do
   After a failed read the next attempt waits `interval * 2^failures`, capped at
   `:max_backoff`; one good read returns to `:interval`.
 
-  Options: `:source` (required), `:interval` and `:max_backoff` in
-  milliseconds, `:name`, `:pubsub`, `:topic`, `:task_supervisor`.
+  Options: `:source` (required), `:interval`, `:max_backoff` and
+  `:read_timeout` in milliseconds, `:name`, `:pubsub`, `:topic`, `:task_supervisor`.
   """
 
   use GenServer
@@ -30,6 +31,7 @@ defmodule Dashboard.Poller do
           {:source, Source.t()}
           | {:interval, pos_integer()}
           | {:max_backoff, pos_integer()}
+          | {:read_timeout, pos_integer()}
           | {:name, GenServer.name()}
           | {:pubsub, atom()}
           | {:topic, String.t()}
@@ -56,6 +58,7 @@ defmodule Dashboard.Poller do
       source: source,
       interval: Keyword.get(options, :interval, 2_000),
       max_backoff: Keyword.get(options, :max_backoff, 30_000),
+      read_timeout: Keyword.get(options, :read_timeout, 20_000),
       pubsub: Keyword.get(options, :pubsub, Dashboard.PubSub),
       topic: Keyword.get(options, :topic, @default_topic),
       task_supervisor: Keyword.get(options, :task_supervisor, Dashboard.TaskSupervisor),
@@ -85,10 +88,22 @@ defmodule Dashboard.Poller do
     {:noreply, finish_read(state, {:error, {:crashed, inspect(reason)}})}
   end
 
+  def handle_info({:read_deadline, ref}, %{task: %Task{ref: ref} = task} = state) do
+    result =
+      case Task.shutdown(task, :brutal_kill) do
+        {:ok, result} -> result
+        _killed_or_exited -> {:error, :timeout}
+      end
+
+    {:noreply, finish_read(state, result)}
+  end
+
+  # A deadline for a read that already finished, or a late task message.
   def handle_info(_message, state), do: {:noreply, state}
 
   defp start_read(%{task: nil} = state) do
     task = Task.Supervisor.async_nolink(state.task_supervisor, Source, :fetch, [state.source])
+    Process.send_after(self(), {:read_deadline, task.ref}, state.read_timeout)
     %{state | task: task}
   end
 

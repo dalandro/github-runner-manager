@@ -33,7 +33,8 @@ defmodule Dashboard.Source.Command do
   end
 
   defp run(command, seconds) do
-    System.cmd("timeout", [Integer.to_string(seconds), command, "--json"])
+    # -k: a command that ignores TERM is killed five seconds later.
+    System.cmd("timeout", ["-k", "5", Integer.to_string(seconds), command, "--json"])
   rescue
     # System.cmd/3 raises when `timeout` itself cannot be started.
     ErlangError -> :missing
