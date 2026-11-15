@@ -18,6 +18,7 @@ defmodule Dashboard.OverviewTest do
                "data-pipeline" => :queued,
                "api" => :queued,
                "docs-site" => :idle,
+               "infra-tools" => :idle,
                "legacy-tools" => :down
              }
     end
@@ -39,7 +40,7 @@ defmodule Dashboard.OverviewTest do
 
     test "counts every activity, including the absent ones" do
       assert Overview.runner_counts(Fixtures.status()) ==
-               %{running: 2, queued: 2, parked: 1, idle: 1, down: 1}
+               %{running: 2, queued: 2, parked: 1, idle: 2, down: 1}
 
       assert Overview.runner_counts(Fixtures.unused_status()) ==
                %{running: 0, queued: 0, parked: 0, idle: 0, down: 0}

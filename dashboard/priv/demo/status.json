@@ -64,6 +64,15 @@
       "worker_pid": null
     },
     {
+      "name": "infra-tools",
+      "repository": "org/infra-tools",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-infra-tools.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
       "name": "legacy-tools",
       "repository": "org/legacy-tools",
       "units": 1,

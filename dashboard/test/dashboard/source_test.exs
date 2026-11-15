@@ -55,7 +55,7 @@ defmodule Dashboard.SourceTest do
       now = Fixtures.now() + 86_400 * 30
 
       assert {:ok, %Status{generated_at: ^now} = status} = Demo.fetch(now: now)
-      assert length(status.runners) == 7
+      assert length(status.runners) == 8
     end
 
     test "ages advance with the replay cycle and then start over" do

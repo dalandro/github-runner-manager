@@ -36,7 +36,7 @@ defmodule DashboardWeb.StatusLiveTest do
       refute has_element?(view, "#demo-badge")
       refute has_element?(view, "#stale-notice")
 
-      assert has_element?(view, "#tile-runners", "5 / 7 busy")
+      assert has_element?(view, "#tile-runners", "5 / 8 busy")
       assert has_element?(view, "#tile-runners", "1 down")
       assert has_element?(view, "#tile-slots", "5 / 6 units")
       assert has_element?(view, "#tile-lock", "Held")
