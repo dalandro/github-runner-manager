@@ -8,6 +8,15 @@ port=${GRM_SMOKE_PORT:-4290}
 
 listeners() { ss -ltnH "sport = :$port"; }
 is_listening() { [[ -n $(listeners) ]]; }
+extra_host=runner-host.private.example
+# The status line of a WebSocket handshake for the live socket from a page at
+# the given origin. A refused origin is answered before the upgrade.
+socket_handshake() {
+  curl -sS -i --max-time 3 -o - \
+    -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: $1" \
+    "http://127.0.0.1:$port/live/websocket?vsn=2.0.0" 2> /dev/null | head -n 1
+}
 is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
 
 @test "dashboard serves demo data on loopback only and stops on TERM" {
@@ -15,7 +24,7 @@ is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
   [[ -d $GRM_ROOT/dashboard/deps/phoenix ]] || skip 'dashboard dependencies are not fetched'
   ! is_listening || skip "port $port is in use"
 
-  "$GRM_ROOT/bin/grm-dashboard" --demo --port "$port" > "$BATS_TEST_TMPDIR/server.log" 2>&1 &
+  "$GRM_ROOT/bin/grm-dashboard" --demo --port "$port" --allow-host "$extra_host" > "$BATS_TEST_TMPDIR/server.log" 2>&1 &
   server=$!
   processes+=("$server")
   local attempt
@@ -48,6 +57,22 @@ is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
   # A request for any other host name is refused (DNS rebinding).
   run curl -sS -o /dev/null -w '%{http_code}' -H 'Host: attacker.example' "http://127.0.0.1:$port/"
   [ "$output" = 403 ]
+
+  # The one extra name given with --allow-host is answered, as a proxy on
+  # this machine would ask for it; forwarded headers count for nothing.
+  run curl -sS -o /dev/null -w '%{http_code}' -H "Host: $extra_host" "http://127.0.0.1:$port/"
+  [ "$output" = 200 ]
+  run curl -sS -o /dev/null -w '%{http_code}' -H 'Host: attacker.example' \
+    -H "X-Forwarded-Host: $extra_host" "http://127.0.0.1:$port/"
+  [ "$output" = 403 ]
+
+  # The live socket opens for a page served under an allowed name only.
+  run socket_handshake "https://$extra_host"
+  [[ $output == *' 101 '* ]]
+  run socket_handshake "http://localhost:$port"
+  [[ $output == *' 101 '* ]]
+  run socket_handshake 'https://attacker.example'
+  [[ $output == *' 403 '* ]]
 
   kill -TERM "$server"
   wait "$server"
