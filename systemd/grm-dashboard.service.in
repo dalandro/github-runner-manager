@@ -15,6 +15,9 @@ RestartSec=10
 Nice=10
 # Uncomment when mix is not on the service manager's PATH (version managers):
 #Environment=PATH=/path/to/elixir/bin:/path/to/erlang/bin:/usr/bin:/bin
+# Uncomment to answer to one more exact host name, for a private-network proxy
+# on this machine (docs/remote-access.md). The listening address stays loopback.
+#Environment=GRM_DASHBOARD_ALLOWED_HOSTS=<machine>.<tailnet>.ts.net
 NoNewPrivileges=true
 
 [Install]
