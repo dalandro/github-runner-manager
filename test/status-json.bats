@@ -66,8 +66,11 @@ fake_proc() {
 @test "json status reports runners with unit state and busy worker" {
   stub_systemctl; write_config
   mkdir -p "$GRM_RUNNERS_DIR/repo-a/bin"
-  cp "$(command -v sleep)" "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker"
-  "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker" 300 &
+  # A copy of bash blocked on a fifo: a renamed coreutils binary refuses to
+  # run where coreutils is one multi-call executable.
+  cp "$(command -v bash)" "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker"
+  mkfifo "$BATS_TEST_TMPDIR/idle"
+  "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker" -c 'exec 3<> "$1"; read -r -u 3 _' _ "$BATS_TEST_TMPDIR/idle" &
   worker=$!; processes+=("$worker")
   export GRM_WORKER_COMM=Fake.Worker
   wait_for grep -qx Fake.Worker "/proc/$worker/comm"
