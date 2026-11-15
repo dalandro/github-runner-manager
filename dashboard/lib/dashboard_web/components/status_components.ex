@@ -56,7 +56,7 @@ defmodule DashboardWeb.StatusComponents do
     <span class="badge badge-ok" id="freshness" title="Time since the picture last changed">
       <.icon name={:ok} /> Live
       <span class="badge-detail">
-        changed {Overview.format_duration(Overview.elapsed(@snapshot.fetched_at, @now))} ago
+        changed {Overview.format_duration(Overview.elapsed(@snapshot.changed_at, @now))} ago
       </span>
     </span>
     """

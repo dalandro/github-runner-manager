@@ -122,9 +122,15 @@ defmodule Dashboard.Poller do
           {Snapshot.fail(state.snapshot, error, now), state.failures + 1}
       end
 
-    if Snapshot.changed?(state.snapshot, snapshot) do
-      Phoenix.PubSub.broadcast(state.pubsub, state.topic, {:snapshot, snapshot})
-    end
+    # Every page, whenever it was opened, shows the same "changed ... ago".
+    snapshot =
+      if Snapshot.changed?(state.snapshot, snapshot) do
+        snapshot = Snapshot.mark_changed(snapshot, now)
+        Phoenix.PubSub.broadcast(state.pubsub, state.topic, {:snapshot, snapshot})
+        snapshot
+      else
+        snapshot
+      end
 
     Process.send_after(self(), :poll, delay(state.interval, state.max_backoff, failures))
     %{state | snapshot: snapshot, failures: failures, task: nil}

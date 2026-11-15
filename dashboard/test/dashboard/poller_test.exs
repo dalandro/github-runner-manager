@@ -29,10 +29,13 @@ defmodule Dashboard.PollerTest do
   test "does not publish a reading that shows the same picture", context do
     status = Fixtures.status()
     later = %{status | generated_at: status.generated_at + 2}
-    start_poller(context, [{:ok, status}, {:ok, later}])
+    poller = start_poller(context, [{:ok, status}, {:ok, later}])
 
-    assert_receive {:snapshot, %Snapshot{}}
+    assert_receive {:snapshot, %Snapshot{changed_at: changed_at}}
     refute_receive {:snapshot, _snapshot}, 100
+    # A page opened now is told when the picture changed, not when it was read.
+    assert %Snapshot{changed_at: ^changed_at} = Poller.snapshot(poller)
+    assert is_integer(changed_at)
   end
 
   test "publishes when the picture changes", context do

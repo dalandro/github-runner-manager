@@ -7,11 +7,17 @@ defmodule Dashboard.Snapshot do
 
   alias Dashboard.{Source, Status}
 
-  defstruct status: nil, fetched_at: nil, error: nil, stale_since: nil, demo: false
+  defstruct status: nil,
+            fetched_at: nil,
+            changed_at: nil,
+            error: nil,
+            stale_since: nil,
+            demo: false
 
   @type t :: %__MODULE__{
           status: Status.t() | nil,
           fetched_at: non_neg_integer() | nil,
+          changed_at: non_neg_integer() | nil,
           error: Source.error() | nil,
           stale_since: non_neg_integer() | nil,
           demo: boolean()
@@ -41,7 +47,16 @@ defmodule Dashboard.Snapshot do
   @spec changed?(t(), t()) :: boolean()
   def changed?(%__MODULE__{} = old, %__MODULE__{} = new), do: comparable(old) != comparable(new)
 
+  @doc "Marks `now` as the moment the picture last changed."
+  @spec mark_changed(t(), non_neg_integer()) :: t()
+  def mark_changed(%__MODULE__{} = snapshot, now), do: %{snapshot | changed_at: now}
+
   defp comparable(%__MODULE__{status: status} = snapshot) do
-    %{snapshot | fetched_at: nil, status: status && %{status | generated_at: nil}}
+    %{
+      snapshot
+      | fetched_at: nil,
+        changed_at: nil,
+        status: status && %{status | generated_at: nil}
+    }
   end
 end
