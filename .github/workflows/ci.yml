@@ -52,10 +52,11 @@ jobs:
           key: dashboard-${{ runner.os }}-${{ hashFiles('dashboard/.tool-versions', 'dashboard/mix.lock') }}
       - name: Fetch dependencies
         run: mix deps.get --check-locked
+      # --force: a cached build must not hide warnings in unchanged files.
+      - name: Compile
+        run: mix compile --warnings-as-errors --force
       - name: Check formatting
         run: mix format --check-formatted
-      - name: Compile
-        run: mix compile --warnings-as-errors
       - name: Test
         run: mix test
       - name: Compile for the smoke test
