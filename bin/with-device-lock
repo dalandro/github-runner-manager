@@ -114,7 +114,7 @@ if ((parked)); then
   ((result == 0)) || exit "$result"
 fi
 if ((cancel)); then exit "$cancel"; fi
-( trap - INT QUIT; exec "$@" ) {lock_fd}>&- <&0 &
+( trap - INT QUIT; umask "$GRM_CALLER_UMASK"; exec "$@" ) {lock_fd}>&- <&0 &
 child=$!
 child_start=$(get_start_time "$child")
 if ((cancel)); then stop_child; fi

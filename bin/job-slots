@@ -67,6 +67,7 @@ read_state() {
 write_state() {
   local temporary
   temporary=$(mktemp "$directory/state.XXXXXX")
+  chmod "$GRM_FILE_MODE" "$temporary"
   {
     printf 'next %s\n' "$next"
     if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi

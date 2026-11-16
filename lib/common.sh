@@ -37,7 +37,7 @@ load_config() {
   : "${GRM_WATCHDOG_KILL_ALLOW:=}" "${GRM_UNIT_PREFIX:=grm-runner-}"
   : "${GRM_SYSTEMD_USER_DIR:=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
   : "${GRM_SYSTEMCTL:=systemctl --user}" "${GRM_PROC:=/proc}"
-  : "${GRM_EVENTS_MAX:=500}"
+  : "${GRM_EVENTS_MAX:=500}" "${GRM_UMASK:=077}"
 }
 load_config
 
@@ -132,6 +132,16 @@ is_uint() { [[ $1 =~ ^(0|[1-9][0-9]*)$ && ${#1} -le 9 ]]; }
 is_number() { [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]; }
 # A process start time in clock ticks since boot; longer than is_uint allows.
 is_ticks() { [[ $1 =~ ^(0|[1-9][0-9]{0,19})$ ]]; }
+
+# State files name repositories, jobs and processes: by default only this
+# account can read them. GRM_UMASK=007 shares them with a group, for runners
+# in separate accounts (docs/runner-units.md#separate-accounts). A command
+# run for a job gets the caller's umask back (GRM_CALLER_UMASK).
+[[ $GRM_UMASK =~ ^0?[0-7]{3}$ ]] || usage_error "GRM_UMASK must be an octal mask such as 077, got: $GRM_UMASK"
+GRM_CALLER_UMASK=$(umask)
+umask "$GRM_UMASK"
+# For files made by mktemp, which ignores the umask.
+GRM_FILE_MODE=$(printf '%03o' $((8#666 & ~8#$GRM_UMASK)))
 
 systemctl_user() {
   local -a systemctl_arguments
