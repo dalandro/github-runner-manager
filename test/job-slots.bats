@@ -188,3 +188,93 @@ unpark_is_waiting() {
   }
   wait_for is_unparking
 }
+
+# A state record for a live holder with one field replaced, as anything that can
+# write the shared state file could leave it. Bash evaluates a variable's value
+# in arithmetic, so a field such as next[$(command)] there would run the command.
+write_poisoned_state() { # <field number, 1-9, or "next"> <value>
+  local start
+  start=$(source "$GRM_ROOT/lib/common.sh"; get_start_time "$holder")
+  mkdir -p "$GRM_STATE_DIR/slots"
+  : > "$GRM_STATE_DIR/slots/lock"
+  awk -v field="$1" -v value="$2" -v holder="$holder" -v start="$start" 'BEGIN {
+    split("holding 1 " holder " " start " 0 0 1 org/repo-a 1700000000", record, " ")
+    next_ticket = 2
+    if (field == "next") next_ticket = value; else record[field] = value
+    print "next " next_ticket
+    print record[1], record[2], record[3], record[4], record[5], record[6], record[7], record[8], record[9]
+  }' > "$GRM_STATE_DIR/slots/state"
+}
+
+@test "state fields that are not plain numbers are never evaluated" {
+  marker=$BATS_TEST_TMPDIR/executed
+  payload='next[$(touch${IFS}'"$marker"')]'
+  export GRM_SYSTEMCTL=true
+  start_holder
+  start_holder; second=$holder
+  for field in next 2 3 4 5 6 7 9; do
+    holder=${processes[0]}
+    write_poisoned_state "$field" "$payload"
+    run "$GRM_ROOT/bin/job-slots" status
+    [ ! -e "$marker" ]
+    [ "$status" -eq 0 ]
+    run "$GRM_ROOT/bin/job-slots" status --raw
+    [ ! -e "$marker" ]
+    [ "$status" -eq 0 ]
+    [[ $output != *'$('* ]]
+    run "$GRM_ROOT/bin/grm-status" --json
+    [ ! -e "$marker" ]
+    [ "$status" -eq 0 ]
+    run "$GRM_ROOT/bin/job-slots" acquire --holder "$second" --units 3
+    [ ! -e "$marker" ]
+    [ "$status" -eq 0 ]
+    [[ $(<"$GRM_STATE_DIR/slots/state") != *'$('* ]]
+    "$GRM_ROOT/bin/job-slots" release --holder "$second"
+  done
+}
+
+@test "a malformed record is dropped as corrupt and logged by the next writer" {
+  start_holder; first=$holder
+  start_holder; second=$holder
+  for value in 08 -1 '1+1' 0 ''; do
+    holder=$first
+    write_poisoned_state 7 "$value"
+    run "$GRM_ROOT/bin/job-slots" status
+    [[ $output == *'used 0'* ]]
+  done
+  # An extra field, a label outside the label alphabet and an unknown kind.
+  holder=$first
+  write_poisoned_state 9 '1700000000 extra'
+  run "$GRM_ROOT/bin/job-slots" status
+  [[ $output == *'used 0'* ]]
+  write_poisoned_state 8 'org/repo;a'
+  run "$GRM_ROOT/bin/job-slots" status
+  [[ $output == *'used 0'* ]]
+  write_poisoned_state 1 'holdin'
+  run "$GRM_ROOT/bin/job-slots" acquire --holder "$second" --units 4
+  [ "$status" -eq 0 ]
+  [[ $output == *'::warning::'*'corrupt'* ]]
+  grep -q ' corrupt ' "$GRM_STATE_DIR/events.log"
+  ! grep -qw holdin "$GRM_STATE_DIR/slots/state"
+}
+
+@test "a well-formed record with an underscore label and no since field is kept" {
+  start_holder
+  write_poisoned_state 8 org/my_repo
+  sed -i 's/ 1700000000$//' "$GRM_STATE_DIR/slots/state"
+  run "$GRM_ROOT/bin/job-slots" status
+  [[ $output == *'used 1'* && $output == *'org/my_repo 0'* ]]
+}
+
+@test "a corrupt next ticket cannot hand out a ticket already in use" {
+  start_holder; first=$holder
+  start_holder; second=$holder
+  holder=$first
+  write_poisoned_state next 'x'
+  acquire_background "$second" 4
+  wait_for has_record queued "$second"
+  run "$GRM_ROOT/bin/job-slots" status --raw
+  [ "$(awk '$1 == "queued" {print $2}' <<< "$output")" = 2 ]
+  "$GRM_ROOT/bin/job-slots" release --holder "$first"
+  wait_for has_record holding "$second"
+}

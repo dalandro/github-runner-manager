@@ -130,6 +130,8 @@ error() { printf '::error::%s\n' "$*" >&2; }
 usage_error() { error "$*"; exit 2; }
 is_uint() { [[ $1 =~ ^(0|[1-9][0-9]*)$ && ${#1} -le 9 ]]; }
 is_number() { [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]; }
+# A process start time in clock ticks since boot; longer than is_uint allows.
+is_ticks() { [[ $1 =~ ^(0|[1-9][0-9]{0,19})$ ]]; }
 
 systemctl_user() {
   local -a systemctl_arguments

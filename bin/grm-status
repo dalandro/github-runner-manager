@@ -93,6 +93,8 @@ render_slots() {
   local kind ticket process waiter waiter_start weight name since unparking used=0 separator='' rows=''
   while read -r kind ticket process _ waiter waiter_start weight name since; do
     [[ $kind != next ]] || continue
+    # job-slots validates records; checked again before arithmetic all the same.
+    is_uint "$weight" || continue
     if [[ $kind == holding ]]; then used=$((used + weight)); fi
     unparking=false
     if [[ $kind == parked ]] && is_alive "$waiter" "$waiter_start"; then unparking=true; fi

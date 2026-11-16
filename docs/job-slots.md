@@ -19,6 +19,15 @@ kind ticket holder-pid holder-start waiter-pid waiter-start units label since
 parked, or asking for parked units back); the status views derive wait and hold times from it. Records written
 before the field existed read as 0, shown as unknown.
 
+Every field is checked for its exact shape before use: numbers are plain
+unsigned integers, the kind is one of three words, the label uses the label
+alphabet below. Bash evaluates a variable's value in arithmetic, so an unchecked
+field such as `next[$(command)]` would run the command in every gate and status
+call. A line that does not match is dropped as corrupt: status commands skip it,
+the next writing call removes it, prints a warning and logs a `corrupt` event.
+The next ticket is always above every ticket in use, even when the header is
+damaged.
+
 The `next N` header records the next ticket. Labels replace characters outside
 `[A-Za-z0-9._/:-]` with underscores. `status --raw` prints records after reaping
 in memory; neither status mode writes state. Normal status includes capacity,
