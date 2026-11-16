@@ -1,8 +1,9 @@
 defmodule DashboardWeb.Plugs.RequireViewer do
   @moduledoc """
-  With a viewer list (`DashboardWeb.Viewers`), refuses every request that is
-  not plainly local unless it carries exactly one identity header naming a
-  listed viewer. A refusal is a 403 with no data and drops the session. An
+  With a viewer list (`DashboardWeb.Viewers`), refuses every request unless
+  it carries exactly one identity header naming a listed viewer, loopback
+  requests included: a loopback `Host` proves nothing, since a forwarder that
+  adds no header passes the client's `Host` through. A refusal is a 403 with no data and drops the session. An
   accepted identity and the time are written to the signed session, which is
   what `DashboardWeb.ViewerAuth` checks when the live socket mounts.
 
@@ -28,10 +29,7 @@ defmodule DashboardWeb.Plugs.RequireViewer do
       [identity] ->
         if Viewers.listed?(identity), do: admit(conn, identity), else: refuse(conn)
 
-      [] ->
-        if Viewers.local?(conn.host, conn.req_headers), do: conn, else: refuse(conn)
-
-      _several ->
+      _none_or_several ->
         refuse(conn)
     end
   end

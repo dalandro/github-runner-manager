@@ -1,10 +1,8 @@
 defmodule DashboardWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :dashboard
 
-  # :uri and :x_headers let DashboardWeb.ViewerAuth tell a local socket from
-  # one that came through a proxy.
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [:uri, :x_headers, session: {__MODULE__, :session_options, []}]]
+    websocket: [connect_info: [session: {__MODULE__, :session_options, []}]]
 
   plug DashboardWeb.Plugs.AllowedHost
 
@@ -33,7 +31,7 @@ defmodule DashboardWeb.Endpoint do
   The session cookie: the CSRF token LiveView checks on connect and, with a
   viewer list, the viewer and when the proxy last vouched for them. With a
   viewer list it is then a credential, so it is `Secure` (sent over the
-  proxy's HTTPS only; browsers also allow it on loopback) and expires.
+  proxy's HTTPS only) and expires.
   """
   def session_options do
     base = [

@@ -55,21 +55,25 @@ bin/grm-dashboard --allow-host <private-name> --viewer <your-login>
 - Viewers are identities as the proxy writes them in its identity header,
   matched exactly and case-insensitively. The header is
   `Tailscale-User-Login` unless `GRM_DASHBOARD_VIEWER_HEADER` names another.
-- A request through the proxy needs exactly one identity header naming a
-  listed viewer. No header, an unlisted identity, or two headers: 403 with no
-  data, and the session cookie is dropped.
-- A request counts as coming through a proxy when its `Host` is not a loopback
-  name, or when it carries the identity header, any `Tailscale-*` header,
-  `Forwarded`, `Via`, `X-Forwarded-For`, `X-Forwarded-Host`,
-  `X-Forwarded-Proto` or `X-Real-IP`. Anything else is a browser on this
-  machine or an SSH tunnel, and is let in without a login, as before.
+- With a viewer list, every request needs exactly one identity header naming a
+  listed viewer, requests to `localhost` included. No header, an unlisted
+  identity, or two headers: 403 with no data, and the session cookie is
+  dropped. A loopback `Host` proves nothing: any forwarder that adds no header
+  of its own (a TCP-mode proxy, an SSH tunnel) passes the client's `Host`
+  through, so the dashboard makes no exception for it.
+- So a dashboard with viewers is no longer viewable in a browser on the host
+  or through an SSH tunnel. For that, use `grm-status --watch`, or start a
+  second dashboard on another port with no allowed host and no viewers
+  (`bin/grm-dashboard --port 4291`).
 - The live socket does not pass through the request check, so the page checks
   again when it connects: the signed session must name a listed viewer seen
-  within the last 12 hours, or the socket must itself be local. Otherwise the
-  page reloads and the request check answers.
+  within the last 12 hours. Otherwise the page reloads and the request check
+  answers.
 - With a viewer list the session cookie is `Secure`, `SameSite=Strict`,
-  `HttpOnly`, and expires after 12 hours. The signing secret is new on every
-  start, so a restart signs everyone out.
+  `HttpOnly`, and expires after 12 hours. Unless `SECRET_KEY_BASE` is set, the
+  signing secret is new on every start, so a restart signs everyone out. Do not
+  set it in the unit: jobs under the same account can read a unit's
+  environment.
 
 ## Example: Tailscale
 
@@ -165,20 +169,23 @@ The check trusts the identity header, so it is as strong as the proxy's
 handling of it.
 
 - **The proxy must remove any copy of the identity header a client sends.**
-  Tailscale Serve does, by its documentation; a different proxy must be
-  checked or configured to.
+  Tailscale Serve in its HTTP and HTTPS modes does, by its documentation; a
+  different proxy must be checked or configured to. **Never use a TCP-mode
+  forwarder** (`tailscale serve --tcp` or `--tls-terminated-tcp`, `socat`,
+  `ssh -R`): it passes a client's own identity header straight through, and
+  any member of the network can claim to be a listed viewer.
 - **Anything on this machine can forge it.** A process that reaches
   127.0.0.1 directly, such as a workflow job running on the same host, can send
-  any header, or none and look local. It can also read the status files and
+  any header, a listed identity included. It can also read the status files and
   run `grm-status --json` itself. The viewer check keeps other devices and
   people out; it is no defence against code running on the host. Running
   runners under accounts of their own is: see
   [runner-units.md](runner-units.md#separate-accounts).
-- **The local exemption relies on the proxy keeping the browser's `Host`
-  header, or adding a forwarding header.** A proxy that rewrote `Host` to a
-  loopback name and added nothing would make every request look local. Check
-  it once from a device on the network whose user is not listed (or with your
-  login temporarily removed from the list): the page must answer 403.
+- **Check it once from the network.** From a device whose user is not listed
+  (or with your login removed from the list for a moment), both of these must
+  answer 403: opening the page, and
+  `curl -s -o /dev/null -w '%{http_code}' -H 'Tailscale-User-Login: <a listed login>' https://<private-name>/`,
+  which shows the proxy replaces a client's identity header.
 - **Another process can take the port while the dashboard is down.** The proxy
   forwards to whatever listens on 127.0.0.1:4290. During a restart, or after
   something on the host stops the dashboard, a local process can listen there

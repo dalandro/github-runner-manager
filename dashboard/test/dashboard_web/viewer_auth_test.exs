@@ -95,9 +95,15 @@ defmodule DashboardWeb.ViewerAuthTest do
       end
     end
 
-    test "loopback without proxy headers still works, as through an SSH tunnel", %{conn: conn} do
+    # A loopback Host proves nothing: any forwarder that adds no header (a
+    # TCP-mode proxy, an SSH tunnel) passes the client's Host through.
+    test "a loopback Host without the identity header is refused too", %{conn: conn} do
+      for host <- ["localhost", "127.0.0.1"] do
+        assert conn |> Map.put(:host, host) |> get("/") |> refused?()
+      end
+
+      conn = conn |> Map.put(:host, "localhost") |> put_req_header(@header, @viewer)
       assert conn |> get("/") |> html_response(200) =~ "org/mobile-app"
-      assert {:ok, _view, _html} = live(conn, "/")
     end
 
     test "the session cookie is Secure and expires", %{conn: conn} do
@@ -135,9 +141,9 @@ defmodule DashboardWeb.ViewerAuthTest do
                )
     end
 
-    test "a socket from a loopback page carrying forwarding headers is refused", %{conn: conn} do
-      conn = put_req_header(conn, "x-forwarded-for", "192.0.2.1")
-
+    test "a socket from a loopback page is refused without a viewer in its session", %{
+      conn: conn
+    } do
       assert {:error, {:redirect, %{to: "/"}}} = live_isolated(conn, StatusLive, session: %{})
     end
   end

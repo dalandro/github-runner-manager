@@ -33,8 +33,8 @@ bin/grm-status --json    # the document the dashboard reads
 
 ## Security
 
-The dashboard asks no login of a browser on this machine, so it must stay
-local; served beyond it, only listed viewers see it.
+Without a viewer list the dashboard asks no login, so it must stay local; with
+one, served to a private network, only listed viewers see it, from anywhere.
 
 - The endpoint binds 127.0.0.1 only; there is no option to bind anything else.
 - **Never expose the port**: no port forward, no `0.0.0.0`, no public reverse
@@ -49,12 +49,11 @@ local; served beyond it, only listed viewers see it.
 - More names can be allowed, exactly and one by one, with `--allow-host` or
   `GRM_DASHBOARD_ALLOWED_HOSTS`, for the private-network proxy above. One list
   (`DashboardWeb.AllowedHosts`) feeds the `Host` check, the socket origin check
-  and the content security policy. Forwarded headers are never read for the
-  host name.
+  and the content security policy. Forwarded headers are never read.
 - An extra name needs a viewer list (`--viewer` or `GRM_DASHBOARD_VIEWERS`):
   the identities the private-network proxy names in its identity header.
-  Without one the dashboard refuses to start. With one, every request that
-  came through a proxy needs a listed identity, and the live socket checks the
+  Without one the dashboard refuses to start. With one, every request needs a
+  listed identity, loopback ones included, and the live socket checks the
   signed session again when it connects. Details and limits, including what a
   process on this machine can still do:
   [remote-access.md](remote-access.md#viewers).

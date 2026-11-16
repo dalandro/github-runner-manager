@@ -10,10 +10,8 @@ defmodule DashboardWeb.Viewers do
   stops the boot (`check_boot!/0`), so serving the page beyond loopback cannot
   happen without one.
 
-  With a list, a request needs a listed identity unless it is plainly local:
-  a loopback `Host` and none of the headers a proxy adds
-  (`local?/2`). The router's `DashboardWeb.Plugs.RequireViewer` checks each
-  request and records the identity in the signed session; the live socket
+  With a list, every request needs a listed identity, from this machine too.
+  The router's `DashboardWeb.Plugs.RequireViewer` checks each request and records the identity in the signed session; the live socket
   never passes through plugs, so `DashboardWeb.ViewerAuth` checks that record
   again when the page mounts.
 
@@ -23,11 +21,7 @@ defmodule DashboardWeb.Viewers do
   people on the private network, not local processes.
   """
 
-  @loopback ~w(localhost 127.0.0.1)
   @default_header "tailscale-user-login"
-  # Headers a proxy adds; their presence means the request did not come
-  # straight from a browser on this machine.
-  @proxy_headers ~w(forwarded via x-forwarded-for x-forwarded-host x-forwarded-proto x-real-ip)
   @identity ~r/\A[!-+\--~]{1,254}\z/
   @header_name ~r/\A[a-z0-9][a-z0-9-]{0,63}\z/
   @max_age 12 * 60 * 60
@@ -82,22 +76,6 @@ defmodule DashboardWeb.Viewers do
     do: String.downcase(String.trim(identity), :ascii) in list()
 
   def listed?(_identity), do: false
-
-  @doc """
-  Whether a request came straight from a browser on this machine: a loopback
-  `Host` and none of the headers a proxy adds, the identity header included.
-  """
-  @spec local?(String.t() | nil, [{String.t(), String.t()}]) :: boolean()
-  def local?(host, headers) when is_binary(host) do
-    identity = header()
-
-    String.downcase(host, :ascii) in @loopback and
-      not Enum.any?(headers, fn {name, _value} ->
-        name in @proxy_headers or name == identity or String.starts_with?(name, "tailscale-")
-      end)
-  end
-
-  def local?(_host, _headers), do: false
 
   @doc """
   Stops the boot when the page is served under an extra host name and no

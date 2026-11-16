@@ -18,7 +18,7 @@ socket_handshake() {
     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: $1" \
     "http://127.0.0.1:$port/live/websocket?vsn=2.0.0" 2> /dev/null | head -n 1
 }
-is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
+is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/robots.txt"; }
 
 @test "dashboard serves demo data on loopback only and stops on TERM" {
   command -v mix > /dev/null || skip 'Elixir is not installed'
@@ -40,10 +40,14 @@ is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
   [ "${#lines[@]}" -eq 1 ]
   [[ ${lines[0]} == *"127.0.0.1:$port"* ]]
 
-  # The page is rendered on the server, from the bundled demo reading.
-  run curl -fsS "http://127.0.0.1:$port/"
+  # The page is rendered on the server, from the bundled demo reading, for a
+  # listed viewer only, on loopback too.
+  run curl -fsS -H "Tailscale-User-Login: $viewer" "http://127.0.0.1:$port/"
   [ "$status" -eq 0 ]
   [[ $output == *'Demo data'* && $output == *'org/mobile-app'* ]]
+  run curl -sS -o "$BATS_TEST_TMPDIR/body" -w '%{http_code}' "http://127.0.0.1:$port/"
+  [ "$output" = 403 ]
+  ! grep -q 'org/' "$BATS_TEST_TMPDIR/body"
   run curl -fsS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/assets/app.css"
   [ "$output" = 200 ]
 
