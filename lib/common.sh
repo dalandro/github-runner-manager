@@ -113,8 +113,10 @@ log_event() {
   detail=${detail//[[:cntrl:]]/ }
   (
     mkdir -p "$GRM_STATE_DIR"
-    exec {events_fd}>"$GRM_STATE_DIR/events.lock"
+    exec {events_fd}<>"$GRM_STATE_DIR/events.lock"
     flock -w 1 "$events_fd" || exit 0
+    # Never write through a symlink or into anything but a plain file.
+    [[ ! -L $GRM_STATE_DIR/events.log && (! -e $GRM_STATE_DIR/events.log || -f $GRM_STATE_DIR/events.log) ]] || exit 0
     printf '%s %s %s %s\n' "$(date +%s)" "$kind" "${subject:-unknown}" "$detail" >> "$GRM_STATE_DIR/events.log"
     count=$(wc -l < "$GRM_STATE_DIR/events.log")
     if ((count > GRM_EVENTS_MAX * 2)); then

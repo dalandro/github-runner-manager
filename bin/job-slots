@@ -102,7 +102,8 @@ if [[ $command == status ]]; then
   exec {lock_fd}<"$directory/lock"
 else
   mkdir -p "$directory"
-  exec {lock_fd}>"$directory/lock"
+  # <> never truncates, so a lock replaced by a symlink damages nothing.
+  exec {lock_fd}<>"$directory/lock"
 fi
 lock_state
 read_state

@@ -98,9 +98,15 @@ effect:
 3. **One account per runner, sharing a group for the state.** Jobs of one
    repository then cannot read another runner's credentials or checkouts.
    - Create a group for the runners and a state directory owned by it with
-     mode 2770; set `GRM_STATE_DIR` to it and `GRM_UMASK=007` in the shared
+     mode 3770 (shared group, and only a file's owner may delete or rename
+     it); set `GRM_STATE_DIR` to it and `GRM_UMASK=007` in the shared
      `config.env`, so lock and state files are shared with the group and no
      one else. The device lock must live there too.
+   - The accounts still trust each other with the state. Any of them can
+     rewrite the slot state, hold a lock, or replace a file it created with a
+     link. The toolkit never truncates a lock file and never writes through a
+     link at the log or holder paths, so this cannot damage another account's
+     files, but it can stall or mislead the gate.
    - Keep each runner directory mode 700, owned by its account, and install
      its unit as that account (it needs lingering to start at boot).
    - Limits today: lock-holder detection sees only processes of the account

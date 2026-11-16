@@ -99,3 +99,23 @@ SCRIPT
     [[ $output == *GRM_UMASK* ]]
   done
 }
+
+@test "planted symlinks in the state directory never truncate or append to their targets" {
+  start_holder
+  mkdir -p "$GRM_STATE_DIR/slots"
+  export GRM_DEVICE_LOCK=$GRM_STATE_DIR/device.lock
+  for name in slots-lock events-log events-lock device-lock holder; do
+    printf 'secret %s\n' "$name" > "$BATS_TEST_TMPDIR/target-$name"
+  done
+  ln -s "$BATS_TEST_TMPDIR/target-slots-lock" "$GRM_STATE_DIR/slots/lock"
+  ln -s "$BATS_TEST_TMPDIR/target-events-log" "$GRM_STATE_DIR/events.log"
+  ln -s "$BATS_TEST_TMPDIR/target-events-lock" "$GRM_STATE_DIR/events.lock"
+  ln -s "$BATS_TEST_TMPDIR/target-device-lock" "$GRM_DEVICE_LOCK"
+  ln -s "$BATS_TEST_TMPDIR/target-holder" "$GRM_DEVICE_LOCK.holder"
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$holder" --units 1
+  GRM_DEVICE_LOCK_PARK=0 "$GRM_ROOT/bin/with-device-lock" -- true
+  "$GRM_ROOT/bin/job-slots" release --holder "$holder"
+  for name in slots-lock events-log events-lock device-lock holder; do
+    [ "$(<"$BATS_TEST_TMPDIR/target-$name")" = "secret $name" ]
+  done
+}

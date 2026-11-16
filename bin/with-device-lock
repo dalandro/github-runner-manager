@@ -18,7 +18,8 @@ done
 if ! is_number "$timeout" || ! is_uint "$GRM_DEVICE_LOCK_GRACE"; then usage_error 'with-device-lock: invalid timeout or grace'; fi
 lock=$(readlink -m "$lock")
 mkdir -p "$(dirname "$lock")"
-exec {lock_fd}>"$lock"
+# <> never truncates, so a lock replaced by a symlink damages nothing.
+exec {lock_fd}<>"$lock"
 child='' child_start='' timer='' cancel=0 wrote_holder=0 phase=waiting
 repository=${GITHUB_REPOSITORY:-unknown} acquired=0
 wrapper_start=$(get_start_time "$$")
@@ -98,7 +99,12 @@ if ! flock -n "$lock_fd"; then
 fi
 if ((cancel)); then exit "$cancel"; fi
 acquired=$(date +%s)
-printf '%s %s %s %s %s %s\n' "$repository" "${GITHUB_RUN_ID:-unknown}" "${GITHUB_JOB:-unknown}" "$$" "$wrapper_start" "$acquired" > "$lock.holder"
+# Written aside and renamed over, so a symlink at the holder path is replaced,
+# never written through.
+holder_file=$(mktemp "$lock.holder.XXXXXX")
+chmod "$GRM_FILE_MODE" "$holder_file"
+printf '%s %s %s %s %s %s\n' "$repository" "${GITHUB_RUN_ID:-unknown}" "${GITHUB_JOB:-unknown}" "$$" "$wrapper_start" "$acquired" > "$holder_file"
+mv -f "$holder_file" "$lock.holder"
 wrote_holder=1
 log_event lock-acquire "$repository" "job ${GITHUB_JOB:-unknown}"
 phase=running
