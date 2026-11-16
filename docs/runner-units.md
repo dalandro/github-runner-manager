@@ -66,7 +66,9 @@ Off, deliberately:
 The toolkit's state directory and files are created mode 700 and 600
 (`GRM_UMASK`, default `077`), so other accounts cannot read the repository and
 job names in them. Commands run by `with-device-lock` get the job's own umask
-back.
+back. The mask applies to new files only: a state directory made before it
+keeps its old modes until you run `chmod -R go-rwx` on it once (or the group
+equivalent, `chmod -R o-rwx`, with `GRM_UMASK=007`).
 
 ## Separate accounts
 
