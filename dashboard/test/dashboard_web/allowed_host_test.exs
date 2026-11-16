@@ -34,6 +34,10 @@ defmodule DashboardWeb.AllowedHostTest do
     end
   end
 
+  test "robots.txt asks every crawler to stay away", %{conn: conn} do
+    assert conn |> get("/robots.txt") |> response(200) == "User-agent: *\nDisallow: /\n"
+  end
+
   test "static files cannot be reached outside the static directory", %{conn: conn} do
     for path <- [
           "/assets/../../../mix.exs",
