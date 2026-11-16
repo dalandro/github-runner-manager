@@ -140,9 +140,11 @@ is_ticks() { [[ $1 =~ ^(0|[1-9][0-9]{0,19})$ ]]; }
 # in separate accounts (docs/runner-units.md#separate-accounts). A command
 # run for a job gets the caller's umask back (GRM_CALLER_UMASK).
 [[ $GRM_UMASK =~ ^0?[0-7]{3}$ ]] || usage_error "GRM_UMASK must be an octal mask such as 077, got: $GRM_UMASK"
+# shellcheck disable=SC2034 # read by the scripts that source this file
 GRM_CALLER_UMASK=$(umask)
 umask "$GRM_UMASK"
 # For files made by mktemp, which ignores the umask.
+# shellcheck disable=SC2034 # read by the scripts that source this file
 GRM_FILE_MODE=$(printf '%03o' $((8#666 & ~8#$GRM_UMASK)))
 
 systemctl_user() {
