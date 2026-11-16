@@ -20,6 +20,14 @@ if config_env() != :test do
   # when the application starts. The listening address does not change.
   config :dashboard, allowed_hosts: System.get_env("GRM_DASHBOARD_ALLOWED_HOSTS")
 
+  # Who may look through that proxy, and the header it names them in;
+  # validated when the application starts (DashboardWeb.Viewers).
+  config :dashboard, viewers: System.get_env("GRM_DASHBOARD_VIEWERS")
+
+  if header = System.get_env("GRM_DASHBOARD_VIEWER_HEADER") do
+    config :dashboard, viewer_header: header
+  end
+
   source =
     case System.get_env("GRM_DASHBOARD_SOURCE", "command") do
       "command" ->

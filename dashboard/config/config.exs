@@ -1,6 +1,7 @@
 import Config
 
-# Loopback only, by design: the page is unauthenticated and read-only. See
+# Loopback only, by design: the page is read-only, and needs a login
+# (DashboardWeb.Viewers) only when a proxy serves it under another name. See
 # docs/dashboard.md before changing the address. The Host and origin checks
 # share one list of names (DashboardWeb.AllowedHosts).
 config :dashboard, DashboardWeb.Endpoint,

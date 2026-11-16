@@ -98,8 +98,9 @@ bin/grm-dashboard --demo   # then open http://127.0.0.1:4290
 
 It is a small Phoenix LiveView app in `dashboard/` and needs Elixir; without it,
 `bin/grm-status --watch` shows the same state in the terminal. It listens on
-127.0.0.1 only and has no authentication: never expose the port, use an SSH
-tunnel (`ssh -L 4290:127.0.0.1:4290 user@host`) to look from elsewhere. The
+127.0.0.1 only and asks no login there: never expose the port, use an SSH
+tunnel (`ssh -L 4290:127.0.0.1:4290 user@host`) to look from elsewhere, or a
+private-network proxy with a list of viewers (`--viewer`). The
 page is view-only by construction: it has no buttons that reach the server, no
 forms and no event handlers, and a test flags the usual ways one would be
 added. Design, security

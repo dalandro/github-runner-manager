@@ -5,8 +5,10 @@ defmodule Dashboard.Application do
 
   @impl true
   def start(_type, _args) do
-    # A mistyped host name stops the boot here, not on the first request.
+    # A mistyped host name or viewer, or an extra host with no viewer list,
+    # stops the boot here, not on the first request.
     DashboardWeb.AllowedHosts.list()
+    DashboardWeb.Viewers.check_boot!()
 
     children =
       [

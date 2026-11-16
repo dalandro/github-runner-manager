@@ -33,7 +33,8 @@ bin/grm-status --json    # the document the dashboard reads
 
 ## Security
 
-The dashboard has no authentication, so it must stay local.
+The dashboard asks no login of a browser on this machine, so it must stay
+local; served beyond it, only listed viewers see it.
 
 - The endpoint binds 127.0.0.1 only; there is no option to bind anything else.
 - **Never expose the port**: no port forward, no `0.0.0.0`, no public reverse
@@ -48,7 +49,15 @@ The dashboard has no authentication, so it must stay local.
 - More names can be allowed, exactly and one by one, with `--allow-host` or
   `GRM_DASHBOARD_ALLOWED_HOSTS`, for the private-network proxy above. One list
   (`DashboardWeb.AllowedHosts`) feeds the `Host` check, the socket origin check
-  and the content security policy. Forwarded headers are never read.
+  and the content security policy. Forwarded headers are never read for the
+  host name.
+- An extra name needs a viewer list (`--viewer` or `GRM_DASHBOARD_VIEWERS`):
+  the identities the private-network proxy names in its identity header.
+  Without one the dashboard refuses to start. With one, every request that
+  came through a proxy needs a listed identity, and the live socket checks the
+  signed session again when it connects. Details and limits, including what a
+  process on this machine can still do:
+  [remote-access.md](remote-access.md#viewers).
 - The page is view-only by construction: it handles no events from the
   browser, has no forms and no parameters, and a test flags the usual ways
   that would change.
@@ -61,7 +70,9 @@ The dashboard has no authentication, so it must stay local.
   lock, and never signals a process; the dashboard only runs that command.
 
 What it shows is still information about the host (repository names, job names,
-process ids), which is one more reason to keep it local.
+process ids), which is one more reason to keep it local. Every job on the host
+can read the same information directly while runners and the dashboard share
+an account: see [runner-units.md](runner-units.md#separate-accounts).
 
 ## How it works
 

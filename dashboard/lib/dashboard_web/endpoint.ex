@@ -1,7 +1,8 @@
 defmodule DashboardWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :dashboard
 
-  # The cookie carries only the CSRF token LiveView checks on connect.
+  # The cookie carries the CSRF token LiveView checks on connect and, with a
+  # viewer list, the viewer and when the proxy last vouched for them.
   @session_options [
     store: :cookie,
     key: "_grm_dashboard",
@@ -9,7 +10,10 @@ defmodule DashboardWeb.Endpoint do
     same_site: "Strict"
   ]
 
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
+  # :uri and :x_headers let DashboardWeb.ViewerAuth tell a local socket from
+  # one that came through a proxy.
+  socket "/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [:uri, :x_headers, session: @session_options]]
 
   plug DashboardWeb.Plugs.AllowedHost
 
