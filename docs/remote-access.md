@@ -177,6 +177,16 @@ handling of it.
   loopback name and added nothing would make every request look local. Check
   it once from a device on the network whose user is not listed (or with your
   login temporarily removed from the list): the page must answer 403.
+- **Another process can take the port while the dashboard is down.** The proxy
+  forwards to whatever listens on 127.0.0.1:4290. During a restart, or after
+  something on the host stops the dashboard, a local process can listen there
+  and its page is served under the trusted private name, receiving the
+  viewer's identity header and session cookie (good for 12 hours against the
+  real dashboard, until it restarts). Only code already running on the host
+  can do this; run the dashboard under an account jobs cannot reach (see
+  above) and keep it running. A listener the dashboard owns for its whole life
+  (a systemd socket unit, or a Unix socket in a private directory) would close
+  this; neither is supported yet.
 
 ## Turning it off
 
