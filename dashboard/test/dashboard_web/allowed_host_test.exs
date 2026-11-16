@@ -85,6 +85,13 @@ defmodule DashboardWeb.AllowedHostTest do
     assert config[:check_origin] == {AllowedHosts, :origin_allowed?, []}
   end
 
+  test "the endpoint caps its connections at what a few browsers need" do
+    limits =
+      Application.fetch_env!(:dashboard, DashboardWeb.Endpoint)[:http][:thousand_island_options]
+
+    assert limits[:num_acceptors] * limits[:num_connections] <= 256
+  end
+
   test "forwarded headers do not make a foreign Host acceptable", %{conn: conn} do
     conn =
       conn

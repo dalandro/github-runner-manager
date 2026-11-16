@@ -1,5 +1,7 @@
-# Template for running the dashboard as a systemd user unit. Replace
-# @GRM_ROOT@ with the absolute path of this checkout, save the result as
+# Template for running the dashboard as a systemd user unit. Build the
+# release first (cd dashboard && mix deps.get --only prod &&
+# MIX_ENV=prod mix release), replace @GRM_ROOT@ with the absolute path of
+# this checkout, save the result as
 # ~/.config/systemd/user/grm-dashboard.service, then:
 #   systemctl --user daemon-reload && systemctl --user enable --now grm-dashboard
 # See docs/dashboard.md. The dashboard listens on 127.0.0.1 only.
@@ -20,7 +22,11 @@ Nice=10
 # identities (docs/remote-access.md). The listening address stays loopback.
 #Environment=GRM_DASHBOARD_ALLOWED_HOSTS=<machine>.<tailnet>.ts.net
 #Environment=GRM_DASHBOARD_VIEWERS=<login-name>
+# Run the built release only: never fetch or compile at start.
+Environment=GRM_DASHBOARD_RELEASE_ONLY=1
 NoNewPrivileges=true
+MemoryMax=512M
+TasksMax=512
 
 [Install]
 WantedBy=default.target

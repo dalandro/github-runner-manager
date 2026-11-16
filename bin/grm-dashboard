@@ -43,6 +43,11 @@ export GRM_DASHBOARD_ALLOWED_HOSTS=$allowed_hosts GRM_DASHBOARD_VIEWERS=$viewers
 if ((demo)); then GRM_DASHBOARD_SOURCE=demo; fi
 release=$dashboard/_build/prod/rel/dashboard/bin/dashboard
 if [[ -x $release ]]; then exec "$release" start; fi
+# The service form: run what was built, never fetch or compile at start.
+if [[ ${GRM_DASHBOARD_RELEASE_ONLY:-0} == 1 ]]; then
+  error "grm-dashboard: no release at $release; build one with: cd dashboard && MIX_ENV=prod mix release"
+  exit 1
+fi
 if ! command -v mix > /dev/null; then
   error 'grm-dashboard: Elixir (mix) is not installed; use "grm-status --watch" for a terminal view'
   exit 1

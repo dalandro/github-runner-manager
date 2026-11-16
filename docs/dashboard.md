@@ -58,6 +58,8 @@ local; served beyond it, only listed viewers see it.
   signed session again when it connects. Details and limits, including what a
   process on this machine can still do:
   [remote-access.md](remote-access.md#viewers).
+- At most 4 acceptors with 32 connections each; a phone and a laptop need a
+  handful.
 - The page is view-only by construction: it handles no events from the
   browser, has no forms and no parameters, and a test flags the usual ways
   that would change.
@@ -183,17 +185,20 @@ overrides it.
 ## Running it permanently
 
 `systemd/grm-dashboard.service.in` is a template for a systemd user unit; the
-comment at its top has the three commands. Nothing installs it for you. For a
-quicker start, build a release once and the launcher will use it:
+comment at its top has the commands. Nothing installs it for you. The service
+runs a built release, never the source: build it once, and again after each
+update of the checkout:
 
 ```bash
-cd dashboard && MIX_ENV=prod mix release
+cd dashboard && mix deps.get --only prod && MIX_ENV=prod mix release
 ```
 
-A built release always wins over the source, so rebuild it after updating the
-checkout. Without a release, run `mix deps.get` in `dashboard/` after an update
-that changes `mix.lock`; the launcher fetches packages on the first run only.
-If the checkout path contains spaces, quote it in the unit's `ExecStart`.
+The unit sets `GRM_DASHBOARD_RELEASE_ONLY=1`, which makes the launcher stop
+with a message instead of fetching packages over the network and compiling
+whatever is in the checkout at each start. The unit also caps memory and
+tasks. A built release always wins over the source for `bin/grm-dashboard` run
+by hand too. If the checkout path contains spaces, quote it in the unit's
+`ExecStart`.
 
 ## Development
 

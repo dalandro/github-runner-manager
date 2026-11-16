@@ -142,3 +142,18 @@ SCRIPT
   [ "$status" -eq 1 ]
   [[ $output == *'grm-status --watch'* ]]
 }
+
+@test "dashboard in release-only mode never fetches or compiles" {
+  setup_dashboard
+  rmdir "$GRM_DASHBOARD_DIR/deps/phoenix"
+  GRM_DASHBOARD_RELEASE_ONLY=1 run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 1 ]
+  [[ $output == *'mix release'* && $output != *'mix deps.get'* && $output != *'mix phx.server'* ]]
+}
+
+@test "dashboard unit template runs the release only, with resource caps" {
+  unit=$GRM_ROOT/systemd/grm-dashboard.service.in
+  grep -Fx 'Environment=GRM_DASHBOARD_RELEASE_ONLY=1' "$unit"
+  grep -Ex 'MemoryMax=[0-9]+M' "$unit"
+  grep -Ex 'TasksMax=[0-9]+' "$unit"
+}
