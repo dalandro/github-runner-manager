@@ -204,3 +204,14 @@ fake_proc() {
   [ "$status" -eq 0 ]
   [ "$(json 'document["events"]')" = '[]' ]
 }
+
+@test "json status fails, rather than show an empty gate, while the slot lock stays held" {
+  mkdir -p "$GRM_STATE_DIR/slots"
+  : > "$GRM_STATE_DIR/slots/lock"
+  flock "$GRM_STATE_DIR/slots/lock" sleep 300 < /dev/null > /dev/null 2>&1 3>&- &
+  processes+=("$!")
+  wait_for test -n "$(find_lock_holders_for "$GRM_STATE_DIR/slots/lock")"
+  GRM_LOCK_WAIT=1 run timeout 10 "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 75 ]
+  [[ $output != *'"records"'* ]]
+}

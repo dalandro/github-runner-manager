@@ -90,8 +90,11 @@ render_runners() {
 }
 
 render_slots() {
-  local kind ticket process waiter waiter_start weight name since unparking used=0 separator='' rows=''
+  local kind ticket process waiter waiter_start weight name since unparking used=0 separator='' rows='' raw
+  # A failure (such as a lock that stays held) must not read as an empty gate.
+  raw=$("$GRM_ROOT/bin/job-slots" status --raw) || return
   while read -r kind ticket process _ waiter waiter_start weight name since; do
+    [[ -n $kind ]] || continue
     [[ $kind != next ]] || continue
     # job-slots validates records; checked again before arithmetic all the same.
     is_uint "$weight" || continue
@@ -103,7 +106,7 @@ render_slots() {
       "$separator" "$(json_string "$kind")" "$(json_number "$ticket")" "$(json_number "$process")" \
       "$(json_number "$weight")" "$(json_string "$name")" "$(json_number "$since")" "$unparking")
     separator=,
-  done < <("$GRM_ROOT/bin/job-slots" status --raw)
+  done <<< "$raw"
   printf '{\n    "capacity": %s, "used": %s, "max_wait_seconds": %s,\n    "records": [%s\n    ]\n  }' \
     "$(json_number "$GRM_SLOTS_CAPACITY")" "$used" "$(json_number "$GRM_SLOTS_MAX_WAIT")" "$rows"
 }
@@ -148,14 +151,15 @@ render_events() {
 }
 
 render_json() {
-  local metrics load=null available=null
+  local metrics load=null available=null slots
+  slots=$(render_slots) || exit
   if metrics=$(get_load_and_memory); then read -r load available <<< "$metrics"; fi
   printf '{\n  "schema": 1,\n  "generated_at": %s,\n' "$(date +%s)"
   printf '  "host": {"cpus": %s, "load_1m": %s, "max_load": %s, "memory_available_mb": %s, "min_memory_mb": %s},\n' \
     "$(json_number "$(getconf _NPROCESSORS_ONLN)")" "$load" "$(json_number "$GRM_MAX_LOAD")" \
     "$available" "$(json_number "$GRM_MIN_MEM_MB")"
   printf '  "runners": [%s\n  ],\n' "$(render_runners)"
-  printf '  "slots": %s,\n' "$(render_slots)"
+  printf '  "slots": %s,\n' "$slots"
   printf '  "device_lock": %s,\n' "$(render_device_lock)"
   printf '  "events": [%s\n  ]\n}\n' "$(render_events)"
 }
