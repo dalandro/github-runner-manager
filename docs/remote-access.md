@@ -1,7 +1,7 @@
 # Looking at the dashboard from a phone
 
-The [dashboard](dashboard.md) listens on 127.0.0.1 and asks no login of a
-browser on the same machine. To see it from a phone, put a **private-network
+The [dashboard](dashboard.md) listens on 127.0.0.1 and, until you list
+viewers, asks no login of a browser on the same machine. To see it from a phone, put a **private-network
 proxy on the same machine** in front of it: software that gives your own
 devices a private network, can serve a loopback port to them under a private
 HTTPS name, and adds a header naming the signed-in user to each request. The
@@ -126,8 +126,9 @@ able to reach the guest's loopback port there. Check that leg on its own, from
 the host, before involving the phone: `curl http://127.0.0.1:4290/robots.txt`
 should print two lines. If it does not, the guest's port forwarding is the
 thing to look at, not the dashboard. Note what that forwarding means: every
-process and every user on the host machine can open the port, and the
-dashboard sees their requests as local ones, with no login.
+process and every user on the host machine can open the port and send any
+identity header, so the viewer check does not keep them out (see below). That
+`curl` answers 403 for the page itself unless it sends a listed identity.
 
 **Private, not public.** `tailscale serve` shares with the private network only.
 A different command, `tailscale funnel`, publishes a port to the whole internet:
