@@ -18,8 +18,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   emulator:
-    # Pull-request jobs never share a runner with main-branch jobs.
-    runs-on: [self-hosted, linux, "${{ github.event_name == 'pull_request' && 'emulator-pr' || 'emulator-main' }}"]
+    # Only a push to main goes to the main runner; everything else, pull
+    # requests included, to the pull-request runner. This routes honest jobs;
+    # it does not stop a pull request that edits this line (see below).
+    runs-on: [self-hosted, linux, "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'emulator-main' || 'emulator-pr' }}"]
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +71,14 @@ safe as the least trusted job before it.
   registration and label, as in the example, preferably under their own
   account ([separate accounts](runner-units.md#separate-accounts)): under one
   account the two runners still share the home directory and its caches.
+- **Labels route jobs; they do not stop a pull-request author.** A
+  `pull_request` job runs the workflow file from the pull request, so its
+  author can change `runs-on` to the main runner's label. Only settings
+  outside the repository hold against that: an organisation runner group
+  restricted to the main branch's workflows, where your plan offers it, or no
+  self-hosted runner for main-branch jobs at all. With repository-level
+  runners, any collaborator who can open a pull request can reach every
+  runner registered to the repository.
 - **Keep secrets off self-hosted jobs.** Give the job `permissions: contents:
   read` and no secrets. Jobs that deploy or publish run on GitHub-hosted
   runners, after the self-hosted tests pass.
