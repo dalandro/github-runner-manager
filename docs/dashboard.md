@@ -196,7 +196,9 @@ The unit sets `GRM_DASHBOARD_RELEASE_ONLY=1`, which makes the launcher stop
 with a message instead of fetching packages over the network and compiling
 whatever is in the checkout at each start. The unit also caps memory and
 tasks. A built release always wins over the source for `bin/grm-dashboard` run
-by hand too. If the checkout path contains spaces, quote it in the unit's
+by hand too, but the launcher refuses one older than any file in the source
+(`lib`, `config`, `assets`, `priv`, `mix.exs`, `mix.lock`), so a forgotten
+rebuild stops the start instead of running old code. If the checkout path contains spaces, quote it in the unit's
 `ExecStart`.
 
 ## Development

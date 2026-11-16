@@ -120,6 +120,20 @@ SCRIPT
   [ "$output" = 'release start PORT=4290 source=demo hosts=runner-host.private.example' ]
 }
 
+@test "dashboard refuses a release older than its source" {
+  setup_dashboard
+  mkdir -p "$GRM_DASHBOARD_DIR/_build/prod/rel/dashboard/bin" "$GRM_DASHBOARD_DIR/lib"
+  printf '#!/usr/bin/env bash\necho release ran\n' > "$GRM_DASHBOARD_DIR/_build/prod/rel/dashboard/bin/dashboard"
+  chmod +x "$GRM_DASHBOARD_DIR/_build/prod/rel/dashboard/bin/dashboard"
+  touch -d '2000-01-01' "$GRM_DASHBOARD_DIR/_build/prod/rel/dashboard/bin/dashboard"
+  : > "$GRM_DASHBOARD_DIR/lib/viewers.ex"
+  for release_only in 0 1; do
+    GRM_DASHBOARD_RELEASE_ONLY=$release_only run "$GRM_ROOT/bin/grm-dashboard"
+    [ "$status" -eq 1 ]
+    [[ $output == *'older than'*'mix release'* && $output != *'release ran'* && $output != *'mix phx.server'* ]]
+  done
+}
+
 @test "dashboard rejects bad arguments" {
   setup_dashboard
   local arguments
