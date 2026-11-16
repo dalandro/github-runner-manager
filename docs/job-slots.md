@@ -12,6 +12,11 @@ Holding weights count against capacity. Oversized requests can enter alone.
 Default capacity is 6 units; `GRM_SLOTS_MAX_WAIT` defaults to 2700 seconds.
 A waiting job's log says so at once and every 30 seconds, with its ticket, the
 units in use and how many other jobs are in the gate, never their names.
+Each step takes the state lock for a moment only. If another process keeps it
+for `GRM_LOCK_WAIT` seconds (default 30), the command gives up with exit 75
+instead of stalling every runner's hook: the job fails to start, or its units
+are left for reaping. The status view skips the event list after one second
+for the same reason.
 
 ```text
 kind ticket holder-pid holder-start waiter-pid waiter-start units label since

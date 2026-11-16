@@ -192,3 +192,15 @@ fake_proc() {
   [ "$status" -eq 124 ]
   [ "$(grep -c 'Job slots' <<< "$output")" -ge 2 ]
 }
+
+@test "json status skips events, without waiting, while the event log stays locked" {
+  mkdir -p "$GRM_STATE_DIR"
+  printf '1700000001 admit org/repo-a entry\n' > "$GRM_STATE_DIR/events.log"
+  : > "$GRM_STATE_DIR/events.lock"
+  flock "$GRM_STATE_DIR/events.lock" sleep 300 < /dev/null > /dev/null 2>&1 3>&- &
+  processes+=("$!")
+  wait_for test -n "$(find_lock_holders_for "$GRM_STATE_DIR/events.lock")"
+  run timeout 10 "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 0 ]
+  [ "$(json 'document["events"]')" = '[]' ]
+}

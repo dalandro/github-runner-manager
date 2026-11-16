@@ -289,3 +289,21 @@ write_poisoned_state() { # <field number, 1-9, or "next"> <value>
   grep -q 'used 4/4; 1 other job' "$BATS_TEST_TMPDIR/waiting"
   ! grep -q 'other-repo' "$BATS_TEST_TMPDIR/waiting"
 }
+
+@test "a job gives up on a slot lock another process never releases" {
+  start_holder
+  mkdir -p "$GRM_STATE_DIR/slots"
+  : > "$GRM_STATE_DIR/slots/lock"
+  flock "$GRM_STATE_DIR/slots/lock" sleep 300 < /dev/null > /dev/null 2>&1 3>&- &
+  processes+=("$!")
+  wait_for test -n "$(find_lock_holders_for "$GRM_STATE_DIR/slots/lock")"
+  for command in acquire release status; do
+    SECONDS=0
+    GRM_LOCK_WAIT=1 run "$GRM_ROOT/bin/job-slots" "$command" --holder "$holder"
+    [ "$status" -eq 75 ]
+    [[ $output == *'::error::'*'locked'* ]]
+    ((SECONDS < 5))
+  done
+  GRM_LOCK_WAIT=soon run "$GRM_ROOT/bin/job-slots" status
+  [ "$status" -eq 2 ]
+}

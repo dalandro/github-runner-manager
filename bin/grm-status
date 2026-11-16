@@ -136,7 +136,8 @@ render_events() {
   local at kind subject detail separator='' events_fd
   [[ -r $GRM_STATE_DIR/events.log && -r $GRM_STATE_DIR/events.lock ]] || return 0
   exec {events_fd}<"$GRM_STATE_DIR/events.lock"
-  flock -s "$events_fd"
+  # Best effort, like writing: a lock held for long only hides the events.
+  flock -s -w 1 "$events_fd" || return 0
   while read -r at kind subject detail; do
     [[ $at =~ ^[0-9]+$ ]] || continue
     printf '%s\n    {"at": %s, "kind": %s, "subject": %s, "detail": %s}' \

@@ -22,7 +22,9 @@ case $command in acquire|release|park|unpark|status) ;; *) usage_error 'job-slot
 if ! is_uint "$holder" || ((holder == 0)); then usage_error 'job-slots: invalid holder'; fi
 if ! is_uint "$units" || ((units == 0)); then usage_error 'job-slots: invalid units'; fi
 if ! is_uint "$GRM_SLOTS_CAPACITY" || ((GRM_SLOTS_CAPACITY == 0)); then usage_error 'job-slots: capacity must be positive'; fi
-if ! is_uint "$GRM_SLOTS_MAX_WAIT" || ! is_number "$GRM_SLOTS_POLL"; then usage_error 'job-slots: invalid wait settings'; fi
+if ! is_uint "$GRM_SLOTS_MAX_WAIT" || ! is_number "$GRM_SLOTS_POLL" || ! is_uint "$GRM_LOCK_WAIT"; then
+  usage_error 'job-slots: invalid wait settings'
+fi
 label=${label//[^a-zA-Z0-9._\/:\-]/_}
 label=${label:-job}
 directory=$GRM_STATE_DIR/slots
@@ -64,6 +66,14 @@ read_state() {
   if ((next <= highest)); then next=$((highest + 1)); fi
 }
 
+# Any job can take the lock file and keep it; give up rather than stall every
+# runner's hook behind it.
+lock_state() {
+  flock -w "$GRM_LOCK_WAIT" "$lock_fd" && return
+  error "job-slots: slot state stayed locked for ${GRM_LOCK_WAIT}s by another process; giving up"
+  exit 75
+}
+
 write_state() {
   local temporary
   temporary=$(mktemp "$directory/state.XXXXXX")
@@ -94,7 +104,7 @@ else
   mkdir -p "$directory"
   exec {lock_fd}>"$directory/lock"
 fi
-flock "$lock_fd"
+lock_state
 read_state
 if [[ $command == status ]]; then
   used=0
@@ -162,7 +172,7 @@ started=$(date +%s)
 # Say so at once, then every 30 s.
 last_notice=$((started - 30))
 while :; do
-  flock "$lock_fd"
+  lock_state
   read_state
   used=0 queue_head=0 parked_head=0 own_index=-1
   for index in "${!records[@]}"; do

@@ -37,7 +37,7 @@ load_config() {
   : "${GRM_WATCHDOG_KILL_ALLOW:=}" "${GRM_UNIT_PREFIX:=grm-runner-}"
   : "${GRM_SYSTEMD_USER_DIR:=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
   : "${GRM_SYSTEMCTL:=systemctl --user}" "${GRM_PROC:=/proc}"
-  : "${GRM_EVENTS_MAX:=500}" "${GRM_UMASK:=077}"
+  : "${GRM_EVENTS_MAX:=500}" "${GRM_UMASK:=077}" "${GRM_LOCK_WAIT:=30}"
 }
 load_config
 
