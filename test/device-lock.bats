@@ -24,13 +24,14 @@ start_lock() {
   flock -n "$GRM_DEVICE_LOCK" true
 }
 
-@test "timeout exits 75 and names the recorded holder" {
+@test "timeout exits 75 and never names the other job in this job's log" {
   mkfifo "$BATS_TEST_TMPDIR/finish"
-  export GITHUB_REPOSITORY=org/repo-a
-  start_lock
-  run "$GRM_ROOT/bin/with-device-lock" --timeout 0.1 -- true
+  GITHUB_REPOSITORY=org/repo-a GITHUB_JOB=secret-job start_lock
+  GITHUB_REPOSITORY=org/repo-b run "$GRM_ROOT/bin/with-device-lock" --timeout 0.1 -- true
   [ "$status" -eq 75 ]
-  [[ $output == *'org/repo-a'* && $output == *'::error::'* ]]
+  [[ $output == *'::notice::'*'held by another job'* && $output == *'::error::'*'held by another job'* ]]
+  [[ $output != *'repo-a'* && $output != *'secret-job'* ]]
+  grep -q 'org/repo-a' "$GRM_DEVICE_LOCK.holder"
   echo finish > "$BATS_TEST_TMPDIR/finish"
   wait "$wrapper"
 }

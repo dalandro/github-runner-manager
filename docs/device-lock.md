@@ -2,8 +2,10 @@
 
 `with-device-lock [--lock FILE] [--timeout S] -- command args...` serialises use
 of one emulator/device. The default `GRM_DEVICE_LOCK_TIMEOUT` is 3600 seconds.
-Its timeout exits 75 and names the recorded holder.
-Busy waits announce that holder. The holder file records repository, workflow
+Its timeout exits 75. A busy wait and a timeout say the device is held by
+another job without naming it: the message lands in the waiting job's log,
+which everyone with access to that repository can read. `grm-status` and the
+dashboard name the holder. The holder file records repository, workflow
 run identifier, job, wrapper PID, start ticks, and acquisition epoch seconds.
 It is diagnostic metadata, not proof of ownership.
 

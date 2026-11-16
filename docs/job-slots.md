@@ -10,6 +10,8 @@ rename. No lock is held during sleep. Tickets increase monotonically; queued
 requests enter in ticket order, even when a smaller request could fit first.
 Holding weights count against capacity. Oversized requests can enter alone.
 Default capacity is 6 units; `GRM_SLOTS_MAX_WAIT` defaults to 2700 seconds.
+A waiting job's log says so at once and every 30 seconds, with its ticket, the
+units in use and how many other jobs are in the gate, never their names.
 
 ```text
 kind ticket holder-pid holder-start waiter-pid waiter-start units label since

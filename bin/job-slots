@@ -159,7 +159,8 @@ fi
 write_state
 flock -u "$lock_fd"
 started=$(date +%s)
-last_notice=$started
+# Say so at once, then every 30 s.
+last_notice=$((started - 30))
 while :; do
   flock "$lock_fd"
   read_state
@@ -199,7 +200,9 @@ while :; do
   fi
   write_state
   if ((now - last_notice >= 30)); then
-    notice "job-slots: waiting ticket $own_ticket; used $used/$GRM_SLOTS_CAPACITY; ${records[*]}"
+    # Counts only: this lands in the job's log, readable by everyone with
+    # access to its repository. grm-status names the other jobs.
+    notice "job-slots: waiting ticket $own_ticket; used $used/$GRM_SLOTS_CAPACITY; $((${#records[@]} - 1)) other job(s) in the gate"
     last_notice=$now
   fi
   flock -u "$lock_fd"

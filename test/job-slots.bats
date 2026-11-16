@@ -278,3 +278,14 @@ write_poisoned_state() { # <field number, 1-9, or "next"> <value>
   "$GRM_ROOT/bin/job-slots" release --holder "$first"
   wait_for has_record holding "$second"
 }
+
+@test "a waiting job's log counts the other jobs and never names them" {
+  start_holder; first=$holder
+  start_holder; second=$holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$first" --units 4 --label org/other-repo
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$second" --units 1 --label org/my-repo > "$BATS_TEST_TMPDIR/waiting" 2>&1 &
+  processes+=("$!")
+  wait_for grep -q 'waiting' "$BATS_TEST_TMPDIR/waiting"
+  grep -q 'used 4/4; 1 other job' "$BATS_TEST_TMPDIR/waiting"
+  ! grep -q 'other-repo' "$BATS_TEST_TMPDIR/waiting"
+}
