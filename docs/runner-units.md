@@ -110,3 +110,6 @@ effect:
      processes in `/proc`, so `/proc` must not be mounted with `hidepid`. The
      dashboard reads the state through `grm-status`, so run it as an account
      in the group.
+
+What no account layout fixes is sharing between jobs of the same runner: see
+[consumer-workflow.md](consumer-workflow.md#trust-between-jobs).

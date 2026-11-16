@@ -148,6 +148,9 @@ and locks do not protect against malicious jobs.
   credentials and checkouts, and change the toolkit and its configuration. Run
   runners under an account of their own, never your login account:
   [separate accounts](docs/runner-units.md#separate-accounts).
+- Runners are persistent, so a job can leave something for the next one. Keep
+  pull-request jobs off the runner that runs main-branch jobs, and secrets off
+  self-hosted jobs: [trust between jobs](docs/consumer-workflow.md#trust-between-jobs).
 - Units turn on the sandboxing a user unit can rely on; what is on and off, and
   why: [hardening](docs/runner-units.md#hardening).
 

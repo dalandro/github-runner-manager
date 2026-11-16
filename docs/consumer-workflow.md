@@ -1,7 +1,9 @@
 # Consumer workflow
 
-For a **private, trusted** consumer repository whose manually registered runner
-has the emulator label:
+For a **private, trusted** consumer repository with two manually registered
+runners: one labelled `emulator-pr` for pull requests, one labelled
+`emulator-main` for the main branch. Read [trust between jobs](#trust-between-jobs)
+for why there are two.
 
 ```yaml
 name: tests
@@ -16,7 +18,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   emulator:
-    runs-on: [self-hosted, linux, emulator]
+    # Pull-request jobs never share a runner with main-branch jobs.
+    runs-on: [self-hosted, linux, "${{ github.event_name == 'pull_request' && 'emulator-pr' || 'emulator-main' }}"]
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
@@ -43,5 +46,36 @@ fail after their configured timeout; ensure the job timeout leaves time for
 cleanup. The wrapper forwards the signal it receives unchanged (INT, TERM or
 HUP), so scripts should trap all three and stop their own descendants; run long
 commands as `cmd & wait $!` so Bash traps fire promptly. Do not
-background device work beyond the wrapped command's lifetime. Public pull
-requests must use GitHub-hosted runners, including this toolkit's own CI.
+background device work beyond the wrapped command's lifetime.
+
+## Trust between jobs
+
+A runner here is persistent: the same registration, account and home directory
+serve job after job, and nothing is cleaned in between. The workspace in
+`_work`, tool caches (`~/.gradle`, `~/.m2`, `~/.npm` and the like), git hooks
+and configuration, and any process a job leaves running all carry over. systemd
+stops leftover processes only when the runner unit itself stops. So any job can
+plant something that a later job runs, and a later job's secrets are only as
+safe as the least trusted job before it.
+
+- **Never attach these runners to a public repository**, and never let them run
+  pull requests from forks. Forks of a public repository can run any code on
+  the machine; for a private repository keep the setting that runs workflows
+  from fork pull requests turned off. Public work, including this toolkit's own
+  CI, belongs on GitHub-hosted runners.
+- **Keep pull-request jobs off the runner that runs main-branch jobs.** A pull
+  request is code nobody has reviewed yet: a contributor branch, an automated
+  dependency bump, a package's install script. Give pull requests their own
+  registration and label, as in the example, preferably under their own
+  account ([separate accounts](runner-units.md#separate-accounts)): under one
+  account the two runners still share the home directory and its caches.
+- **Keep secrets off self-hosted jobs.** Give the job `permissions: contents:
+  read` and no secrets. Jobs that deploy or publish run on GitHub-hosted
+  runners, after the self-hosted tests pass.
+- **Clean up what you can.** Let `actions/checkout` clean the workspace (its
+  default), avoid long-lived caches in the home directory for jobs that do not
+  need them, and stop the processes a job starts before it ends.
+- **Prefer one-job runners where you can.** A runner registered with
+  `--ephemeral` takes one job and unregisters, so nothing carries over. It
+  needs a fresh registration token for every job, which this toolkit does not
+  handle; its units restart a runner that exits and suit long-lived ones only.
