@@ -41,7 +41,9 @@ Requires Linux, Bash 4.4+, coreutils, awk, util-linux `flock`, a systemd user
 manager, and `pgrep` for the status display. No daemon or package installation is
 provided. Keep the toolkit in a stable absolute location, such as
 `$HOME/github-runner-manager`. All participating runners must share the config,
-state directory, device lock, and user account. Use a local filesystem.
+state directory and device lock, and by default one user account: not your
+login account ([separate accounts](docs/runner-units.md#separate-accounts)).
+Use a local filesystem.
 
 1. Copy and edit configuration:
 
@@ -139,9 +141,15 @@ Alternatives considered:
 Never attach a self-hosted runner to a public repository: fork pull requests can
 run arbitrary code on the machine. This toolkit's own CI uses GitHub-hosted
 runners only. Use private, trusted consumer repositories and treat workflow code
-as local code execution. Registration tokens are secret and short-lived. Runners
-run as their user; prefer a separate account with minimal access. Slots and locks
-do not protect against malicious jobs.
+as local code execution. Registration tokens are secret and short-lived. Slots
+and locks do not protect against malicious jobs.
+
+- Every job can do whatever the runners' account can: read every runner's
+  credentials and checkouts, and change the toolkit and its configuration. Run
+  runners under an account of their own, never your login account:
+  [separate accounts](docs/runner-units.md#separate-accounts).
+- Units turn on the sandboxing a user unit can rely on; what is on and off, and
+  why: [hardening](docs/runner-units.md#hardening).
 
 ## Status
 

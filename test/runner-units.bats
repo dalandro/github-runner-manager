@@ -43,6 +43,18 @@ SCRIPT
   [ -f "$GRM_SYSTEMD_USER_DIR/grm-stale-lock-watchdog.timer" ]
 }
 
+@test "runner unit sets the hardening that needs no namespaces, and nothing a job relies on" {
+  configure_runner
+  "$GRM_ROOT/bin/grm-install-runner" repo-a
+  unit=$GRM_SYSTEMD_USER_DIR/grm-runner-repo-a.service
+  for directive in NoNewPrivileges RestrictSUIDSGID LockPersonality RestrictRealtime; do
+    grep -Fx "$directive=yes" "$unit"
+  done
+  # Decided off in docs/runner-units.md#hardening: each needs a namespace a
+  # user manager may not get, or breaks JIT compilers, emulators or sandboxes.
+  ! grep -E '^(PrivateTmp|ProtectSystem|ProtectHome|PrivateDevices|PrivateUsers|ReadOnlyPaths|MemoryDenyWriteExecute|RestrictNamespaces|SystemCallArchitectures)=' "$unit"
+}
+
 @test "active runner is never implicitly restarted" {
   configure_runner
   run env STUB_ACTIVE=0 "$GRM_ROOT/bin/grm-install-runner" --enable repo-a
