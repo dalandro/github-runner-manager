@@ -121,7 +121,9 @@ the guest. The proxy forwards to `127.0.0.1:4290` on the host, so the host must 
 able to reach the guest's loopback port there. Check that leg on its own, from
 the host, before involving the phone: `curl http://127.0.0.1:4290/robots.txt`
 should print two lines. If it does not, the guest's port forwarding is the
-thing to look at, not the dashboard.
+thing to look at, not the dashboard. Note what that forwarding means: every
+process and every user on the host machine can open the port, and the
+dashboard sees their requests as local ones, with no login.
 
 **Private, not public.** `tailscale serve` shares with the private network only.
 A different command, `tailscale funnel`, publishes a port to the whole internet:
