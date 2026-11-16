@@ -307,3 +307,16 @@ write_poisoned_state() { # <field number, 1-9, or "next"> <value>
   GRM_LOCK_WAIT=soon run "$GRM_ROOT/bin/job-slots" status
   [ "$status" -eq 2 ]
 }
+
+@test "ticket zero is corrupt, and the lock wait must be positive" {
+  start_holder
+  write_poisoned_state 2 0
+  run "$GRM_ROOT/bin/job-slots" status
+  [[ $output == *'used 0'* ]]
+  write_poisoned_state next 0
+  start_holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$holder" --units 1
+  awk -v holder="$holder" '$3 == holder && $2 > 1 {found=1} END {exit !found}' "$GRM_STATE_DIR/slots/state"
+  GRM_LOCK_WAIT=0 run "$GRM_ROOT/bin/job-slots" status
+  [ "$status" -eq 2 ]
+}
