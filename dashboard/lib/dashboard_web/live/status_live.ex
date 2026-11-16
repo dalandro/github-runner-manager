@@ -77,8 +77,8 @@ defmodule DashboardWeb.StatusLive do
 
       <footer class="page-footer">
         <p>
-          Read-only view of <code>grm-status --json</code>. Local to this machine: never expose
-          this port; use an SSH tunnel to look from elsewhere.
+          Read-only view of <code>grm-status --json</code>. Listens on this machine only: never
+          expose this port; look from elsewhere through an SSH tunnel or a private-network proxy.
         </p>
       </footer>
     </div>

@@ -4,20 +4,33 @@ set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
 # Start the read-only web dashboard on 127.0.0.1. It needs Elixir; without it,
 # `grm-status --watch` is the terminal view of the same state.
-demo=0 port=${GRM_DASHBOARD_PORT:-4290}
+# --allow-host adds a name the page answers to, for a proxy on this machine
+# that serves it on a private network (docs/remote-access.md). The listening
+# address stays 127.0.0.1.
+usage='usage: grm-dashboard [--demo] [--port N] [--allow-host NAME]...'
+demo=0 port=${GRM_DASHBOARD_PORT:-4290} allowed_hosts=${GRM_DASHBOARD_ALLOWED_HOSTS:-}
 while (($#)); do
   case $1 in
     --demo) demo=1; shift;;
     --port)
       (($# >= 2)) || usage_error 'grm-dashboard: missing value for --port'
       port=$2; shift 2;;
-    *) usage_error 'usage: grm-dashboard [--demo] [--port N]';;
+    --allow-host)
+      (($# >= 2)) && [[ -n $2 ]] || usage_error 'grm-dashboard: missing value for --allow-host'
+      allowed_hosts=${allowed_hosts:+$allowed_hosts,}$2; shift 2;;
+    *) usage_error "$usage";;
   esac
 done
 if ! is_uint "$port" || ((port < 1 || port > 65535)); then usage_error 'grm-dashboard: invalid port'; fi
+# Exact names only; the dashboard applies the same rule and is the authority.
+host_label='[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?'
+if [[ -n $allowed_hosts && ! $allowed_hosts =~ ^$host_label([.]$host_label)*(,$host_label([.]$host_label)*)*$ ]]; then
+  usage_error 'grm-dashboard: allowed hosts are plain host names (no scheme, port, path or wildcard)'
+fi
 dashboard=${GRM_DASHBOARD_DIR:-$GRM_ROOT/dashboard}
 export PORT=$port PHX_SERVER=true MIX_ENV=prod
 export GRM_STATUS_COMMAND=$GRM_ROOT/bin/grm-status GRM_DASHBOARD_SOURCE=command
+export GRM_DASHBOARD_ALLOWED_HOSTS=$allowed_hosts
 if ((demo)); then GRM_DASHBOARD_SOURCE=demo; fi
 release=$dashboard/_build/prod/rel/dashboard/bin/dashboard
 if [[ -x $release ]]; then exec "$release" start; fi
@@ -29,4 +42,5 @@ cd "$dashboard"
 # First run only: fetch the Hex packages (network), then mix compiles them.
 if [[ ! -d deps/phoenix ]]; then mix deps.get --only prod; fi
 printf 'grm-dashboard: http://127.0.0.1:%s (loopback only; stop with Ctrl-C)\n' "$port"
+if [[ -n $allowed_hosts ]]; then printf 'grm-dashboard: also answers to: %s\n' "$allowed_hosts"; fi
 exec mix phx.server

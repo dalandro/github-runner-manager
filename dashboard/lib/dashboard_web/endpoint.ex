@@ -11,7 +11,7 @@ defmodule DashboardWeb.Endpoint do
 
   socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
-  plug DashboardWeb.Plugs.LocalHost
+  plug DashboardWeb.Plugs.AllowedHost
 
   plug Plug.Static,
     at: "/",

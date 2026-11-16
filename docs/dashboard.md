@@ -36,15 +36,22 @@ bin/grm-status --json    # the document the dashboard reads
 The dashboard has no authentication, so it must stay local.
 
 - The endpoint binds 127.0.0.1 only; there is no option to bind anything else.
-- **Never expose the port**: no reverse proxy, no port forward, no `0.0.0.0`.
-  To look from another machine use an SSH tunnel, which keeps the request local
-  on the host: `ssh -L 4290:127.0.0.1:4290 user@host`, then open
-  `http://localhost:4290` on your side.
+- **Never expose the port**: no port forward, no `0.0.0.0`, no public reverse
+  proxy or tunnel. To look from another machine use an SSH tunnel, which keeps
+  the request local on the host: `ssh -L 4290:127.0.0.1:4290 user@host`, then
+  open `http://localhost:4290` on your side. To look from a phone, use a
+  private-network proxy on the same machine: [remote-access.md](remote-access.md).
 - Requests whose `Host` header is not `localhost` or `127.0.0.1` get a 403.
   Without that check, a web page open in a browser on the host could reach the
   loopback port through DNS rebinding.
-- The WebSocket accepts the same two origins only (`check_origin`).
-- The page handles no events from the browser, has no forms and no parameters.
+- The WebSocket accepts pages from the same two names only (`check_origin`).
+- More names can be allowed, exactly and one by one, with `--allow-host` or
+  `GRM_DASHBOARD_ALLOWED_HOSTS`, for the private-network proxy above. One list
+  (`DashboardWeb.AllowedHosts`) feeds the `Host` check, the socket origin check
+  and the content security policy. Forwarded headers are never read.
+- The page is view-only by construction: it handles no events from the
+  browser, has no forms and no parameters, and a test flags the usual ways
+  that would change.
   The status command is started with a fixed argument vector from
   configuration; nothing a request carries can reach it.
 - A content security policy allows scripts and styles from the dashboard itself
@@ -188,7 +195,9 @@ mix check          # format check, compile with warnings as errors, tests
 `test/dashboard.bats` covers the launcher without Elixir.
 `test/dashboard-smoke.bats` starts the real server in demo mode and checks that
 it listens on 127.0.0.1 only, serves the page, refuses path traversal and
-foreign `Host` headers, and exits on TERM; it is skipped where Elixir is absent.
+foreign `Host` headers, answers to one extra allowed name, completes a WebSocket
+handshake for allowed origins only, and exits on TERM; it is skipped where
+Elixir is absent.
 
 ## Not verified
 
