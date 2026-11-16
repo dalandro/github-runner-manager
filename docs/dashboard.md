@@ -195,7 +195,11 @@ cd dashboard && mix deps.get --only prod && MIX_ENV=prod mix release
 The unit sets `GRM_DASHBOARD_RELEASE_ONLY=1`, which makes the launcher stop
 with a message instead of fetching packages over the network and compiling
 whatever is in the checkout at each start. The unit also caps memory and
-tasks. A built release always wins over the source for `bin/grm-dashboard` run
+tasks; a user unit's caps take effect only where the user manager has the
+`memory` and `pids` controllers delegated (cgroup v2), and are ignored
+otherwise. Check with
+`cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`.
+A built release always wins over the source for `bin/grm-dashboard` run
 by hand too, but the launcher refuses one older than any file in the source
 (`lib`, `config`, `assets`, `priv`, `mix.exs`, `mix.lock`), so a forgotten
 rebuild stops the start instead of running old code. If the checkout path contains spaces, quote it in the unit's
