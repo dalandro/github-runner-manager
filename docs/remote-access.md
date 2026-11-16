@@ -67,8 +67,9 @@ bin/grm-dashboard --allow-host <private-name> --viewer <your-login>
   again when it connects: the signed session must name a listed viewer seen
   within the last 12 hours, or the socket must itself be local. Otherwise the
   page reloads and the request check answers.
-- The signing secret of the session is new on every start, so a restart signs
-  everyone out.
+- With a viewer list the session cookie is `Secure`, `SameSite=Strict`,
+  `HttpOnly`, and expires after 12 hours. The signing secret is new on every
+  start, so a restart signs everyone out.
 
 ## Example: Tailscale
 

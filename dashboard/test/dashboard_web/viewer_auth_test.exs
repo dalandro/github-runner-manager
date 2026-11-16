@@ -100,6 +100,15 @@ defmodule DashboardWeb.ViewerAuthTest do
       assert {:ok, _view, _html} = live(conn, "/")
     end
 
+    test "the session cookie is Secure and expires", %{conn: conn} do
+      cookie = conn |> proxied([{@header, @viewer}]) |> get("/") |> Map.fetch!(:resp_cookies)
+
+      assert %{secure: true, max_age: max_age, same_site: "Strict"} =
+               cookie["_grm_dashboard"]
+
+      assert max_age == Viewers.max_age()
+    end
+
     test "a socket whose session names no viewer is refused", %{conn: conn} do
       conn = Map.put(conn, :host, @extra_host)
 
@@ -138,10 +147,11 @@ defmodule DashboardWeb.ViewerAuthTest do
       start_demo_poller()
     end
 
-    test "loopback works as before, with no identity", %{conn: conn} do
+    test "loopback works as before, with no identity and a plain session cookie", %{conn: conn} do
       conn = get(conn, "/")
 
       assert html_response(conn, 200) =~ "org/mobile-app"
+      refute conn.resp_cookies["_grm_dashboard"][:secure]
       assert {:ok, _view, _html} = live(build_conn(:get, "http://localhost/"), "/")
     end
 
