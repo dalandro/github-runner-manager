@@ -1,15 +1,8 @@
 defmodule DashboardWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :dashboard
 
-  # The cookie carries only the CSRF token LiveView checks on connect.
-  @session_options [
-    store: :cookie,
-    key: "_grm_dashboard",
-    signing_salt: "grm-dashboard-session",
-    same_site: "Strict"
-  ]
-
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
+  socket "/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [session: {__MODULE__, :session_options, []}]]
 
   plug DashboardWeb.Plugs.AllowedHost
 
@@ -31,6 +24,33 @@ defmodule DashboardWeb.Endpoint do
     only: ~w(phoenix_live_view.min.js)
 
   plug Plug.Head
-  plug Plug.Session, @session_options
+  plug :session
   plug DashboardWeb.Router
+
+  @doc """
+  The session cookie: the CSRF token LiveView checks on connect and, with a
+  viewer list, the viewer and when the proxy last vouched for them. With a
+  viewer list it is then a credential, so it is `Secure` (sent over the
+  proxy's HTTPS only) and expires.
+  """
+  def session_options do
+    base = [
+      store: :cookie,
+      key: "_grm_dashboard",
+      signing_salt: "grm-dashboard-session",
+      same_site: "Strict"
+    ]
+
+    if DashboardWeb.Viewers.required?() do
+      base ++ [secure: true, max_age: DashboardWeb.Viewers.max_age()]
+    else
+      base
+    end
+  end
+
+  # Options are read per request, not compiled in, because they follow the
+  # runtime viewer setting.
+  defp session(conn, _options) do
+    Plug.Session.call(conn, Plug.Session.init(session_options()))
+  end
 end

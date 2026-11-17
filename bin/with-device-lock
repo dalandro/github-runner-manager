@@ -18,7 +18,8 @@ done
 if ! is_number "$timeout" || ! is_uint "$GRM_DEVICE_LOCK_GRACE"; then usage_error 'with-device-lock: invalid timeout or grace'; fi
 lock=$(readlink -m "$lock")
 mkdir -p "$(dirname "$lock")"
-exec {lock_fd}>"$lock"
+# <> never truncates, so a lock replaced by a symlink damages nothing.
+exec {lock_fd}<>"$lock"
 child='' child_start='' timer='' cancel=0 wrote_holder=0 phase=waiting
 repository=${GITHUB_REPOSITORY:-unknown} acquired=0
 wrapper_start=$(get_start_time "$$")
@@ -75,10 +76,10 @@ wait_child() {
 
 holder=${GRM_SLOTS_HOLDER:-$(find_worker_pid)}
 parked=0
+# The holder is another repository's job: its name stays out of this job's
+# log, readable by everyone with access to this repository. grm-status names it.
 if ! flock -n "$lock_fd"; then
-  recorded=unknown
-  if [[ -r $lock.holder ]]; then IFS= read -r recorded < "$lock.holder" || true; fi
-  notice "with-device-lock: waiting for $lock; holder: $recorded"
+  notice "with-device-lock: waiting for $lock; held by another job (grm-status shows which)"
   log_event lock-wait "$repository" "device busy"
   if [[ $GRM_DEVICE_LOCK_PARK != 0 && -n $holder ]]; then
     "$GRM_ROOT/bin/job-slots" park --holder "$holder" {lock_fd}>&-
@@ -91,16 +92,19 @@ if ! flock -n "$lock_fd"; then
   wait_child
   if ((cancel)); then exit "$cancel"; fi
   if ((result != 0)); then
-    recorded=unknown
-    if [[ -r $lock.holder ]]; then IFS= read -r recorded < "$lock.holder" || true; fi
-    error "with-device-lock: timed out waiting for $lock; holder: $recorded"
+    error "with-device-lock: timed out after ${timeout}s waiting for $lock; held by another job (grm-status shows which)"
     log_event lock-timeout "$repository" "gave up after ${timeout}s"
     exit "$result"
   fi
 fi
 if ((cancel)); then exit "$cancel"; fi
 acquired=$(date +%s)
-printf '%s %s %s %s %s %s\n' "$repository" "${GITHUB_RUN_ID:-unknown}" "${GITHUB_JOB:-unknown}" "$$" "$wrapper_start" "$acquired" > "$lock.holder"
+# Written aside and renamed over, so a symlink at the holder path is replaced,
+# never written through.
+holder_file=$(mktemp "$lock.holder.XXXXXX")
+chmod "$GRM_FILE_MODE" "$holder_file"
+printf '%s %s %s %s %s %s\n' "$repository" "${GITHUB_RUN_ID:-unknown}" "${GITHUB_JOB:-unknown}" "$$" "$wrapper_start" "$acquired" > "$holder_file"
+mv -f "$holder_file" "$lock.holder"
 wrote_holder=1
 log_event lock-acquire "$repository" "job ${GITHUB_JOB:-unknown}"
 phase=running
@@ -114,7 +118,7 @@ if ((parked)); then
   ((result == 0)) || exit "$result"
 fi
 if ((cancel)); then exit "$cancel"; fi
-( trap - INT QUIT; exec "$@" ) {lock_fd}>&- <&0 &
+( trap - INT QUIT; umask "$GRM_CALLER_UMASK"; exec "$@" ) {lock_fd}>&- <&0 &
 child=$!
 child_start=$(get_start_time "$child")
 if ((cancel)); then stop_child; fi

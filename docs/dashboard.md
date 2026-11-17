@@ -33,7 +33,8 @@ bin/grm-status --json    # the document the dashboard reads
 
 ## Security
 
-The dashboard has no authentication, so it must stay local.
+Without a viewer list the dashboard asks no login, so it must stay local; with
+one, served to a private network, only listed viewers see it, from anywhere.
 
 - The endpoint binds 127.0.0.1 only; there is no option to bind anything else.
 - **Never expose the port**: no port forward, no `0.0.0.0`, no public reverse
@@ -49,6 +50,15 @@ The dashboard has no authentication, so it must stay local.
   `GRM_DASHBOARD_ALLOWED_HOSTS`, for the private-network proxy above. One list
   (`DashboardWeb.AllowedHosts`) feeds the `Host` check, the socket origin check
   and the content security policy. Forwarded headers are never read.
+- An extra name needs a viewer list (`--viewer` or `GRM_DASHBOARD_VIEWERS`):
+  the identities the private-network proxy names in its identity header.
+  Without one the dashboard refuses to start. With one, every request needs a
+  listed identity, loopback ones included, and the live socket checks the
+  signed session again when it connects. Details and limits, including what a
+  process on this machine can still do:
+  [remote-access.md](remote-access.md#viewers).
+- At most 4 acceptors with 32 connections each; a phone and a laptop need a
+  handful.
 - The page is view-only by construction: it handles no events from the
   browser, has no forms and no parameters, and a test flags the usual ways
   that would change.
@@ -61,7 +71,9 @@ The dashboard has no authentication, so it must stay local.
   lock, and never signals a process; the dashboard only runs that command.
 
 What it shows is still information about the host (repository names, job names,
-process ids), which is one more reason to keep it local.
+process ids), which is one more reason to keep it local. Every job on the host
+can read the same information directly while runners and the dashboard share
+an account: see [runner-units.md](runner-units.md#separate-accounts).
 
 ## How it works
 
@@ -172,17 +184,26 @@ overrides it.
 ## Running it permanently
 
 `systemd/grm-dashboard.service.in` is a template for a systemd user unit; the
-comment at its top has the three commands. Nothing installs it for you. For a
-quicker start, build a release once and the launcher will use it:
+comment at its top has the commands. Nothing installs it for you. The service
+runs a built release, never the source: build it once, and again after each
+update of the checkout:
 
 ```bash
-cd dashboard && MIX_ENV=prod mix release
+cd dashboard && mix deps.get --only prod && MIX_ENV=prod mix release
 ```
 
-A built release always wins over the source, so rebuild it after updating the
-checkout. Without a release, run `mix deps.get` in `dashboard/` after an update
-that changes `mix.lock`; the launcher fetches packages on the first run only.
-If the checkout path contains spaces, quote it in the unit's `ExecStart`.
+The unit sets `GRM_DASHBOARD_RELEASE_ONLY=1`, which makes the launcher stop
+with a message instead of fetching packages over the network and compiling
+whatever is in the checkout at each start. The unit also caps memory and
+tasks; a user unit's caps take effect only where the user manager has the
+`memory` and `pids` controllers delegated (cgroup v2), and are ignored
+otherwise. Check with
+`cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`.
+A built release always wins over the source for `bin/grm-dashboard` run
+by hand too, but the launcher refuses one older than any file in the source
+(`lib`, `config`, `assets`, `priv`, `mix.exs`, `mix.lock`), so a forgotten
+rebuild stops the start instead of running old code. If the checkout path contains spaces, quote it in the unit's
+`ExecStart`.
 
 ## Development
 

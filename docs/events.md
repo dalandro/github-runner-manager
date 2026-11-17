@@ -15,6 +15,7 @@ epoch kind subject detail...
 | `park` / `unpark` | `job-slots` | Units returned while waiting for the device; units requested back. |
 | `release` | `job-slots release` | A holder gave its units back. |
 | `reap` | any writing `job-slots` call | A record's process was gone and the record was dropped. |
+| `corrupt` | any writing `job-slots` call | State lines that were not exactly a valid record were dropped (count only; the content is never logged or evaluated). |
 | `lock-wait` / `lock-acquire` / `lock-release` / `lock-timeout` | `with-device-lock` | Device lock life cycle. |
 | `stale` / `kill` | `stale-lock-watchdog` | A stale lock holder was found (logged once per holder, however often the watchdog runs); TERM was sent. |
 

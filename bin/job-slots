@@ -22,22 +22,38 @@ case $command in acquire|release|park|unpark|status) ;; *) usage_error 'job-slot
 if ! is_uint "$holder" || ((holder == 0)); then usage_error 'job-slots: invalid holder'; fi
 if ! is_uint "$units" || ((units == 0)); then usage_error 'job-slots: invalid units'; fi
 if ! is_uint "$GRM_SLOTS_CAPACITY" || ((GRM_SLOTS_CAPACITY == 0)); then usage_error 'job-slots: capacity must be positive'; fi
-if ! is_uint "$GRM_SLOTS_MAX_WAIT" || ! is_number "$GRM_SLOTS_POLL"; then usage_error 'job-slots: invalid wait settings'; fi
+if ! is_uint "$GRM_SLOTS_MAX_WAIT" || ! is_number "$GRM_SLOTS_POLL" || ! is_uint "$GRM_LOCK_WAIT" || ((GRM_LOCK_WAIT == 0)); then
+  usage_error 'job-slots: invalid wait settings'
+fi
 label=${label//[^a-zA-Z0-9._\/:\-]/_}
 label=${label:-job}
 directory=$GRM_STATE_DIR/slots
 state=$directory/state
-records=() reaped=() next=1
+records=() reaped=() corrupt=0 next=1
+
+# The state file is shared by every job, and Bash evaluates a variable's value
+# in arithmetic, so a field such as next[$(command)] would run the command. Every
+# field must have exactly its expected shape before anything uses it; a record
+# that does not is dropped as corrupt. Records written before the since field
+# existed have none and read as 0: unknown.
+is_record() { # kind ticket process start waiter waiter_start weight name since
+  [[ $1 == holding || $1 == queued || $1 == parked ]] &&
+    is_uint "$2" && (($2 > 0)) && is_uint "$3" && is_ticks "$4" && is_uint "$5" && is_ticks "$6" &&
+    is_uint "$7" && (($7 > 0)) && [[ $8 =~ ^[a-zA-Z0-9._/:_-]+$ && $9 =~ ^[0-9]{0,12}$ ]]
+}
 
 read_state() {
-  local kind ticket process start waiter waiter_start weight name since
-  records=() next=1
+  local kind ticket process start waiter waiter_start weight name since highest=0
+  records=() corrupt=0 next=1
   [[ -f $state ]] || return 0
   while read -r kind ticket process start waiter waiter_start weight name since; do
-    if [[ $kind == next ]]; then next=$ticket; continue; fi
-    case $kind in holding|queued|parked) ;; *) continue;; esac
-    # Records written before the since field existed read as 0: unknown.
-    [[ ${since:-} =~ ^[0-9]+$ ]] || since=0
+    [[ -n $kind ]] || continue
+    if [[ $kind == next && -z $process ]] && is_uint "$ticket" && ((ticket > 0)); then next=$ticket; continue; fi
+    if ! is_record "$kind" "$ticket" "$process" "$start" "$waiter" "$waiter_start" "$weight" "$name" "${since:-}"; then
+      corrupt=$((corrupt + 1)); continue
+    fi
+    since=${since:-0}
+    if ((ticket > highest)); then highest=$ticket; fi
     if ! is_alive "$process" "$start"; then
       reaped+=("$name pid $process, $kind, $weight units"); continue
     fi
@@ -46,11 +62,22 @@ read_state() {
     fi
     records+=("$kind $ticket $process $start $waiter $waiter_start $weight $name $since")
   done < "$state"
+  # A lost or damaged next line must not hand out a ticket that is in use.
+  if ((next <= highest)); then next=$((highest + 1)); fi
+}
+
+# Any job can take the lock file and keep it; give up rather than stall every
+# runner's hook behind it.
+lock_state() {
+  flock -w "$GRM_LOCK_WAIT" "$lock_fd" && return
+  error "job-slots: slot state stayed locked for ${GRM_LOCK_WAIT}s by another process; giving up"
+  exit 75
 }
 
 write_state() {
   local temporary
   temporary=$(mktemp "$directory/state.XXXXXX")
+  chmod "$GRM_FILE_MODE" "$temporary"
   {
     printf 'next %s\n' "$next"
     if ((${#records[@]})); then printf '%s\n' "${records[@]}"; fi
@@ -60,6 +87,11 @@ write_state() {
   local entry
   for entry in "${reaped[@]}"; do log_event reap "${entry%% *}" "${entry#* }"; done
   reaped=()
+  if ((corrupt)); then
+    warning "job-slots: dropped $corrupt corrupt line(s) from $state"
+    log_event corrupt slots "$corrupt line(s) dropped from the state file"
+    corrupt=0
+  fi
 }
 
 if [[ $command == status && ! -f $directory/lock ]]; then
@@ -70,9 +102,10 @@ if [[ $command == status ]]; then
   exec {lock_fd}<"$directory/lock"
 else
   mkdir -p "$directory"
-  exec {lock_fd}>"$directory/lock"
+  # <> never truncates, so a lock replaced by a symlink damages nothing.
+  exec {lock_fd}<>"$directory/lock"
 fi
-flock "$lock_fd"
+lock_state
 read_state
 if [[ $command == status ]]; then
   used=0
@@ -137,9 +170,10 @@ fi
 write_state
 flock -u "$lock_fd"
 started=$(date +%s)
-last_notice=$started
+# Say so at once, then every 30 s.
+last_notice=$((started - 30))
 while :; do
-  flock "$lock_fd"
+  lock_state
   read_state
   used=0 queue_head=0 parked_head=0 own_index=-1
   for index in "${!records[@]}"; do
@@ -177,7 +211,9 @@ while :; do
   fi
   write_state
   if ((now - last_notice >= 30)); then
-    notice "job-slots: waiting ticket $own_ticket; used $used/$GRM_SLOTS_CAPACITY; ${records[*]}"
+    # Counts only: this lands in the job's log, readable by everyone with
+    # access to its repository. grm-status names the other jobs.
+    notice "job-slots: waiting ticket $own_ticket; used $used/$GRM_SLOTS_CAPACITY; $((${#records[@]} - 1)) other job(s) in the gate"
     last_notice=$now
   fi
   flock -u "$lock_fd"

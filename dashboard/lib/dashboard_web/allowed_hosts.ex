@@ -26,6 +26,10 @@ defmodule DashboardWeb.AllowedHosts do
   @spec list() :: [String.t()]
   def list, do: @loopback ++ parse!(Application.get_env(:dashboard, :allowed_hosts))
 
+  @doc "Whether the operator allowed any name beyond loopback."
+  @spec extra?() :: boolean()
+  def extra?, do: list() != @loopback
+
   @doc """
   The names in a comma-separated setting, lower-cased. Raises `ArgumentError`
   for anything that is not a plain host name, so a typo such as a URL, a port

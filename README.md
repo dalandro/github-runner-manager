@@ -41,7 +41,9 @@ Requires Linux, Bash 4.4+, coreutils, awk, util-linux `flock`, a systemd user
 manager, and `pgrep` for the status display. No daemon or package installation is
 provided. Keep the toolkit in a stable absolute location, such as
 `$HOME/github-runner-manager`. All participating runners must share the config,
-state directory, device lock, and user account. Use a local filesystem.
+state directory and device lock, and by default one user account: not your
+login account ([separate accounts](docs/runner-units.md#separate-accounts)).
+Use a local filesystem.
 
 1. Copy and edit configuration:
 
@@ -98,8 +100,9 @@ bin/grm-dashboard --demo   # then open http://127.0.0.1:4290
 
 It is a small Phoenix LiveView app in `dashboard/` and needs Elixir; without it,
 `bin/grm-status --watch` shows the same state in the terminal. It listens on
-127.0.0.1 only and has no authentication: never expose the port, use an SSH
-tunnel (`ssh -L 4290:127.0.0.1:4290 user@host`) to look from elsewhere. The
+127.0.0.1 only and, without a viewer list, asks no login: never expose the port, use an SSH
+tunnel (`ssh -L 4290:127.0.0.1:4290 user@host`) to look from elsewhere, or a
+private-network proxy with a list of viewers (`--viewer`). The
 page is view-only by construction: it has no buttons that reach the server, no
 forms and no event handlers, and a test flags the usual ways one would be
 added. Design, security
@@ -138,9 +141,18 @@ Alternatives considered:
 Never attach a self-hosted runner to a public repository: fork pull requests can
 run arbitrary code on the machine. This toolkit's own CI uses GitHub-hosted
 runners only. Use private, trusted consumer repositories and treat workflow code
-as local code execution. Registration tokens are secret and short-lived. Runners
-run as their user; prefer a separate account with minimal access. Slots and locks
-do not protect against malicious jobs.
+as local code execution. Registration tokens are secret and short-lived. Slots
+and locks do not protect against malicious jobs.
+
+- Every job can do whatever the runners' account can: read every runner's
+  credentials and checkouts, and change the toolkit and its configuration. Run
+  runners under an account of their own, never your login account:
+  [separate accounts](docs/runner-units.md#separate-accounts).
+- Runners are persistent, so a job can leave something for the next one. Keep
+  pull-request jobs off the runner that runs main-branch jobs, and secrets off
+  self-hosted jobs: [trust between jobs](docs/consumer-workflow.md#trust-between-jobs).
+- Units turn on the sandboxing a user unit can rely on; what is on and off, and
+  why: [hardening](docs/runner-units.md#hardening).
 
 ## Status
 

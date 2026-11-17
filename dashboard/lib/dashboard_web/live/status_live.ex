@@ -12,6 +12,8 @@ defmodule DashboardWeb.StatusLive do
 
   import DashboardWeb.StatusComponents
 
+  on_mount {DashboardWeb.ViewerAuth, :require_viewer}
+
   alias Dashboard.Snapshot
 
   @tick_ms 1_000

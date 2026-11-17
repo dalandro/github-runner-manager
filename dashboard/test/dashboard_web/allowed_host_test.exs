@@ -34,6 +34,10 @@ defmodule DashboardWeb.AllowedHostTest do
     end
   end
 
+  test "robots.txt asks every crawler to stay away", %{conn: conn} do
+    assert conn |> get("/robots.txt") |> response(200) == "User-agent: *\nDisallow: /\n"
+  end
+
   test "static files cannot be reached outside the static directory", %{conn: conn} do
     for path <- [
           "/assets/../../../mix.exs",
@@ -83,6 +87,13 @@ defmodule DashboardWeb.AllowedHostTest do
 
     assert config[:http][:ip] == {127, 0, 0, 1}
     assert config[:check_origin] == {AllowedHosts, :origin_allowed?, []}
+  end
+
+  test "the endpoint caps its connections at what a few browsers need" do
+    limits =
+      Application.fetch_env!(:dashboard, DashboardWeb.Endpoint)[:http][:thousand_island_options]
+
+    assert limits[:num_acceptors] * limits[:num_connections] <= 256
   end
 
   test "forwarded headers do not make a foreign Host acceptable", %{conn: conn} do

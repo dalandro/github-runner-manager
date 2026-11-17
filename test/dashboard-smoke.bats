@@ -9,6 +9,7 @@ port=${GRM_SMOKE_PORT:-4290}
 listeners() { ss -ltnH "sport = :$port"; }
 is_listening() { [[ -n $(listeners) ]]; }
 extra_host=runner-host.private.example
+viewer=viewer@example.com
 # The status line of a WebSocket handshake for the live socket from a page at
 # the given origin. A refused origin is answered before the upgrade.
 socket_handshake() {
@@ -17,14 +18,14 @@ socket_handshake() {
     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: $1" \
     "http://127.0.0.1:$port/live/websocket?vsn=2.0.0" 2> /dev/null | head -n 1
 }
-is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
+is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/robots.txt"; }
 
 @test "dashboard serves demo data on loopback only and stops on TERM" {
   command -v mix > /dev/null || skip 'Elixir is not installed'
   [[ -d $GRM_ROOT/dashboard/deps/phoenix ]] || skip 'dashboard dependencies are not fetched'
   ! is_listening || skip "port $port is in use"
 
-  "$GRM_ROOT/bin/grm-dashboard" --demo --port "$port" --allow-host "$extra_host" > "$BATS_TEST_TMPDIR/server.log" 2>&1 &
+  "$GRM_ROOT/bin/grm-dashboard" --demo --port "$port" --allow-host "$extra_host" --viewer "$viewer" > "$BATS_TEST_TMPDIR/server.log" 2>&1 &
   server=$!
   processes+=("$server")
   local attempt
@@ -39,10 +40,14 @@ is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
   [ "${#lines[@]}" -eq 1 ]
   [[ ${lines[0]} == *"127.0.0.1:$port"* ]]
 
-  # The page is rendered on the server, from the bundled demo reading.
-  run curl -fsS "http://127.0.0.1:$port/"
+  # The page is rendered on the server, from the bundled demo reading, for a
+  # listed viewer only, on loopback too.
+  run curl -fsS -H "Tailscale-User-Login: $viewer" "http://127.0.0.1:$port/"
   [ "$status" -eq 0 ]
   [[ $output == *'Demo data'* && $output == *'org/mobile-app'* ]]
+  run curl -sS -o "$BATS_TEST_TMPDIR/body" -w '%{http_code}' "http://127.0.0.1:$port/"
+  [ "$output" = 403 ]
+  ! grep -q 'org/' "$BATS_TEST_TMPDIR/body"
   run curl -fsS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/assets/app.css"
   [ "$output" = 200 ]
 
@@ -59,9 +64,18 @@ is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/"; }
   [ "$output" = 403 ]
 
   # The one extra name given with --allow-host is answered, as a proxy on
-  # this machine would ask for it; forwarded headers count for nothing.
-  run curl -sS -o /dev/null -w '%{http_code}' -H "Host: $extra_host" "http://127.0.0.1:$port/"
+  # this machine would ask for it, to the listed viewer only; forwarded
+  # headers count for nothing.
+  run curl -sS -o "$BATS_TEST_TMPDIR/body" -w '%{http_code}' -H "Host: $extra_host" \
+    -H "Tailscale-User-Login: $viewer" "http://127.0.0.1:$port/"
   [ "$output" = 200 ]
+  grep -q 'org/mobile-app' "$BATS_TEST_TMPDIR/body"
+  run curl -sS -o "$BATS_TEST_TMPDIR/body" -w '%{http_code}' -H "Host: $extra_host" "http://127.0.0.1:$port/"
+  [ "$output" = 403 ]
+  ! grep -q 'org/' "$BATS_TEST_TMPDIR/body"
+  run curl -sS -o /dev/null -w '%{http_code}' -H "Host: $extra_host" \
+    -H 'Tailscale-User-Login: stranger@example.com' "http://127.0.0.1:$port/"
+  [ "$output" = 403 ]
   run curl -sS -o /dev/null -w '%{http_code}' -H 'Host: attacker.example' \
     -H "X-Forwarded-Host: $extra_host" "http://127.0.0.1:$port/"
   [ "$output" = 403 ]

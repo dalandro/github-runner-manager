@@ -10,6 +10,13 @@ rename. No lock is held during sleep. Tickets increase monotonically; queued
 requests enter in ticket order, even when a smaller request could fit first.
 Holding weights count against capacity. Oversized requests can enter alone.
 Default capacity is 6 units; `GRM_SLOTS_MAX_WAIT` defaults to 2700 seconds.
+A waiting job's log says so at once and every 30 seconds, with its ticket, the
+units in use and how many other jobs are in the gate, never their names.
+Each step takes the state lock for a moment only. If another process keeps it
+for `GRM_LOCK_WAIT` seconds (default 30), the command gives up with exit 75
+instead of stalling every runner's hook: the job fails to start, or its units
+are left for reaping. The status view skips the event list after one second
+for the same reason.
 
 ```text
 kind ticket holder-pid holder-start waiter-pid waiter-start units label since
@@ -18,6 +25,15 @@ kind ticket holder-pid holder-start waiter-pid waiter-start units label since
 `since` is the epoch second of the record's last transition (queued, admitted,
 parked, or asking for parked units back); the status views derive wait and hold times from it. Records written
 before the field existed read as 0, shown as unknown.
+
+Every field is checked for its exact shape before use: numbers are plain
+unsigned integers, the kind is one of three words, the label uses the label
+alphabet below. Bash evaluates a variable's value in arithmetic, so an unchecked
+field such as `next[$(command)]` would run the command in every gate and status
+call. A line that does not match is dropped as corrupt: status commands skip it,
+the next writing call removes it, prints a warning and logs a `corrupt` event.
+The next ticket is always above every ticket in use, even when the header is
+damaged.
 
 The `next N` header records the next ticket. Labels replace characters outside
 `[A-Za-z0-9._/:-]` with underscores. `status --raw` prints records after reaping

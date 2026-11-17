@@ -55,3 +55,8 @@ acquire_background() {
   acquirer=$!
   processes+=("$acquirer")
 }
+
+find_lock_holders_for() {
+  # shellcheck source=lib/common.sh
+  (source "$GRM_ROOT/lib/common.sh"; find_lock_holders "$1")
+}

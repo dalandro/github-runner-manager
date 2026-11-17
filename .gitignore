@@ -1,2 +1,7 @@
 test/vendor/
 config.env
+# Secrets that must never be committed.
+.env
+*.env
+!config.example.env
+*.pem
