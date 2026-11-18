@@ -19,7 +19,8 @@ bin/grm-dashboard --port 4300 # default port is 4290 (or GRM_DASHBOARD_PORT)
 Then open <http://127.0.0.1:4290>. The first start fetches the Hex packages
 (network) and compiles; later starts take a few seconds.
 
-Set `GRM_STATUS_COMMAND` to another command that prints schema-1 JSON.
+`GRM_STATUS_COMMAND` replaces `grm-status`: the path of one executable, run
+with `--json` (no shell, no other arguments), that prints [schema 1](status-json.md).
 
 ## Cost, and the fallback
 
