@@ -38,6 +38,25 @@ defmodule Dashboard.Fixtures do
     end)
   end
 
+  @doc """
+  Every runner up with no job, nobody waiting and the device lock free; the
+  events are kept. `transform` runs on the raw document after that.
+  """
+  def idle_status(transform \\ & &1) do
+    status(fn document ->
+      document
+      |> Map.update!("runners", fn runners ->
+        Enum.map(runners, &%{&1 | "unit_state" => "active", "worker_pid" => nil})
+      end)
+      |> Map.put("workers", [])
+      |> put_in(["slots", "records"], [])
+      |> put_in(["slots", "used"], 0)
+      |> put_in(["device_lock", "state"], "free")
+      |> put_in(["device_lock", "holder"], nil)
+      |> transform.()
+    end)
+  end
+
   @doc "The device lock held by a leaked descriptor: wrapper gone, watchdog reporting."
   def stale_lock_status do
     status(fn document ->

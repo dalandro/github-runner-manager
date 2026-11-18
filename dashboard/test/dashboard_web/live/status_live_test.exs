@@ -28,19 +28,34 @@ defmodule DashboardWeb.StatusLiveTest do
       %{snapshot: start_poller(stub({:ok, Fixtures.status()}))}
     end
 
-    test "states runners, slots, queue, lock and load", %{conn: conn} do
+    test "leads with one verdict, then runners, slots, waiting and the gate", %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/")
 
       assert html =~ "Runner host"
-      assert has_element?(view, "#freshness", "Live")
       refute has_element?(view, "#demo-badge")
-      refute has_element?(view, "#stale-notice")
 
-      assert has_element?(view, "#tile-runners", "5 / 8 busy")
-      assert has_element?(view, "#tile-runners", "1 down")
-      assert has_element?(view, "#tile-slots", "5 / 6 units")
-      assert has_element?(view, "#tile-lock", "Held")
-      assert has_element?(view, "#tile-gate", "Open")
+      assert has_element?(view, "#verdict.verdict-attention", "1 runner down: legacy-tools")
+      assert has_element?(view, "#verdict", "2 jobs waiting for slot units")
+
+      assert has_element?(
+               view,
+               "#verdict",
+               "1 job waiting for the device, held by org/mobile-app"
+             )
+
+      assert has_element?(view, "#strip-runners", "5 / 8 busy")
+      assert has_element?(view, "#strip-runners", "1 down")
+      assert has_element?(view, "#strip-slots", "5 / 6 units")
+      assert has_element?(view, "#strip-waiting", "3 waiting")
+      refute has_element?(view, ".tile")
+
+      assert has_element?(view, "#gate", "Heavy steps may start")
+      refute has_element?(view, "#gate.gate-warn")
+      refute has_element?(view, "#quiet")
+
+      # Only the headline is announced; the details count up every second.
+      assert has_element?(view, "#verdict [role=status] .verdict-headline")
+      refute has_element?(view, "#verdict[role=status]")
 
       assert has_element?(view, "#runner-mobile-app", "Running")
       assert has_element?(view, "#runner-mobile-app", "has the device")
@@ -69,8 +84,32 @@ defmodule DashboardWeb.StatusLiveTest do
       status = Fixtures.status(&put_in(&1, ["slots", "records"], []))
       publish(%{snapshot | status: status})
 
-      assert has_element?(view, "#tile-queue", "0 waiting")
-      assert has_element?(view, "#queue", "Nobody is waiting")
+      assert has_element?(view, "#strip-waiting", "0 waiting")
+      assert has_element?(view, "#quiet-queue", "Queue: empty")
+      refute has_element?(view, "#queue")
+    end
+
+    test "says when it last read the host and when the picture last changed", %{
+      conn: conn,
+      snapshot: snapshot
+    } do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#freshness", "updated")
+      assert has_element?(view, "#freshness", "last change")
+
+      # A reading with the same picture moves only the read time.
+      publish(%{snapshot | fetched_at: 0, changed_at: 0})
+      assert view |> element("#freshness") |> render() =~ ~r/updated \d+d \d+h ago/
+
+      Phoenix.PubSub.broadcast(
+        Dashboard.PubSub,
+        Poller.topic(),
+        {:read_at, snapshot.fetched_at + 3_600}
+      )
+
+      assert has_element?(view, "#freshness", "updated 0s ago")
+      assert view |> element("#freshness") |> render() =~ ~r/last change \d+d \d+h ago/
     end
 
     test "says so when a waiting job is past the maximum wait", %{conn: conn, snapshot: snapshot} do
@@ -87,14 +126,58 @@ defmodule DashboardWeb.StatusLiveTest do
     end
   end
 
-  test "an unused host gets guidance instead of empty cards", %{conn: conn} do
+  test "an unused host collapses its empty panels into one quiet group", %{conn: conn} do
     start_poller(stub({:ok, Fixtures.unused_status()}))
     {:ok, view, _html} = live(conn, ~p"/")
 
+    assert has_element?(view, "#verdict.verdict-attention", "No runners configured")
     assert has_element?(view, "#runners", "No runners configured")
-    assert has_element?(view, "#slots", "No job holds units")
-    assert has_element?(view, "#queue", "Nobody is waiting")
-    assert has_element?(view, "#events", "Nothing has happened yet")
+
+    assert has_element?(view, "#quiet-slots", "0 of 6 units in use")
+    assert has_element?(view, "#quiet-queue", "Queue: empty")
+    assert has_element?(view, "#quiet-events", "none yet")
+    refute has_element?(view, "#slots")
+    refute has_element?(view, "#queue")
+    refute has_element?(view, "#events")
+    refute has_element?(view, "#device-lock")
+  end
+
+  test "an idle host is all clear, and a high load only would hold", %{conn: conn} do
+    status = Fixtures.idle_status(&put_in(&1, ["host", "load_1m"], 9.0))
+    start_poller(stub({:ok, status}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(
+             view,
+             "#verdict.verdict-clear",
+             "All clear: nothing running, nothing waiting"
+           )
+
+    assert has_element?(view, "#quiet-device-lock", "Device lock: free")
+    assert has_element?(view, "#gate", "Would hold heavy steps: load 9.00, limit 6")
+    refute has_element?(view, "#gate.gate-warn")
+    assert has_element?(view, "#meter-load", "1.5× the limit")
+  end
+
+  test "the gate is a warning when it holds heavy steps while jobs run", %{conn: conn} do
+    start_poller(stub({:ok, Fixtures.status(&put_in(&1, ["host", "load_1m"], 7.2))}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#gate.gate-warn", "Heavy steps are held: load 7.20, limit 6")
+  end
+
+  test "jobs waiting with nothing broken is a waiting verdict", %{conn: conn} do
+    status =
+      Fixtures.status(
+        &update_in(&1, ["runners", Access.at(7)], fn runner ->
+          Map.put(runner, "unit_state", "active")
+        end)
+      )
+
+    start_poller(stub({:ok, status}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#verdict.verdict-waiting", "3 jobs waiting")
   end
 
   test "with no runners listed, the empty state says how to point it at a config", %{conn: conn} do
@@ -109,11 +192,9 @@ defmodule DashboardWeb.StatusLiveTest do
     start_poller(stub({:ok, Fixtures.unused_status()}))
     {:ok, view, _html} = live(conn, ~p"/")
 
-    assert has_element?(view, "#device-lock", "No lock file at the path in GRM_DEVICE_LOCK")
-    assert has_element?(view, "#tile-lock", "No lock file")
-    refute has_element?(view, "#device-lock", "never")
-    refute has_element?(view, "#tile-lock", "never")
-    refute has_element?(view, "#tile-lock", "Unused")
+    assert has_element?(view, "#quiet-device-lock", "no lock file at GRM_DEVICE_LOCK")
+    refute has_element?(view, "#quiet-device-lock", "never")
+    refute has_element?(view, "#quiet-device-lock", "Unused")
   end
 
   test "jobs on runners missing from GRM_RUNNERS are shown, not hidden", %{conn: conn} do
@@ -130,7 +211,7 @@ defmodule DashboardWeb.StatusLiveTest do
     start_poller(stub({:ok, status}))
     {:ok, view, _html} = live(conn, ~p"/")
 
-    assert has_element?(view, "#tile-runners", "2 jobs not matched to a runner")
+    assert has_element?(view, "#strip-runners", "2 jobs not matched to a runner")
 
     assert has_element?(
              view,
@@ -148,7 +229,7 @@ defmodule DashboardWeb.StatusLiveTest do
     start_poller(stub({:ok, Fixtures.stale_lock_status()}))
     {:ok, view, _html} = live(conn, ~p"/")
 
-    assert has_element?(view, "#tile-lock", "Stale")
+    assert has_element?(view, "#verdict.verdict-attention", "Device lock is stale")
     assert has_element?(view, "#lock-stale", "adb")
     assert has_element?(view, "#lock-stale", "pid 50112")
     assert has_element?(view, "#lock-stale", "report-only")
@@ -162,7 +243,7 @@ defmodule DashboardWeb.StatusLiveTest do
     start_poller(stub({:ok, status}))
     {:ok, view, _html} = live(conn, ~p"/")
 
-    assert has_element?(view, "#tile-lock", "Unclaimed")
+    assert has_element?(view, "#verdict", "Device lock held with no live wrapper")
     assert has_element?(view, "#lock-orphaned")
   end
 
@@ -185,15 +266,25 @@ defmodule DashboardWeb.StatusLiveTest do
 
       publish(Snapshot.fail(snapshot, :timeout, snapshot.fetched_at + 5))
 
-      assert has_element?(view, "#stale-notice", "Stale data")
-      assert has_element?(view, "#stale-notice", "did not finish in time")
+      # The verdict itself turns to the stale message.
+      assert has_element?(view, "#verdict.verdict-attention", "Stale data")
+      # The announced headline stays put while the age counts up in the details.
+      assert has_element?(
+               view,
+               "#verdict .verdict-headline",
+               "Stale data: showing the last good reading"
+             )
+
+      assert has_element?(view, "#verdict .verdict-details", "It is")
+      assert has_element?(view, "#verdict", "did not finish in time")
+      refute has_element?(view, "#verdict", "runner down")
       assert has_element?(view, "#freshness", "Stale")
-      assert has_element?(view, "#tile-slots", "5 / 6 units")
+      assert has_element?(view, "#strip-slots", "5 / 6 units")
 
       publish(snapshot)
 
-      refute has_element?(view, "#stale-notice")
-      assert has_element?(view, "#freshness", "Live")
+      refute has_element?(view, "#verdict", "Stale data")
+      assert has_element?(view, "#freshness", "updated")
     end
   end
 

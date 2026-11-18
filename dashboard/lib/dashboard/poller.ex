@@ -11,6 +11,8 @@ defmodule Dashboard.Poller do
 
   A new `Dashboard.Snapshot` is broadcast as `{:snapshot, snapshot}` only when
   it differs from the previous one (see `Dashboard.Snapshot.changed?/2`).
+  An unchanged good reading broadcasts `{:read_at, fetched_at}` when its read
+  time differs.
   The change time tracks runners, slots, queue, lock and events; load and
   memory are sampled on every reading (see `Dashboard.Snapshot.state_changed?/2`).
 
@@ -132,8 +134,15 @@ defmodule Dashboard.Poller do
         snapshot
       end
 
-    if Snapshot.changed?(state.snapshot, snapshot) do
-      Phoenix.PubSub.broadcast(state.pubsub, state.topic, {:snapshot, snapshot})
+    cond do
+      Snapshot.changed?(state.snapshot, snapshot) ->
+        Phoenix.PubSub.broadcast(state.pubsub, state.topic, {:snapshot, snapshot})
+
+      Snapshot.read_since?(state.snapshot, snapshot) ->
+        Phoenix.PubSub.broadcast(state.pubsub, state.topic, {:read_at, snapshot.fetched_at})
+
+      true ->
+        :ok
     end
 
     Process.send_after(self(), :poll, delay(state.interval, state.max_backoff, failures))

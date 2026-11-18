@@ -57,6 +57,108 @@ defmodule Dashboard.Overview do
     Enum.reject(workers, &MapSet.member?(listed, &1.pid))
   end
 
+  @doc "Whether any runner, unlisted worker or slot record represents work."
+  @spec busy?(Status.t()) :: boolean()
+  def busy?(%Status{} = status) do
+    Enum.any?(runners(status), &(&1.activity in [:running, :queued, :parked])) or
+      unlisted_workers(status) != [] or status.slots.records != []
+  end
+
+  @doc "The host verdict, with problems before waiting work and running work."
+  @spec verdict(Status.t(), non_neg_integer()) :: %{
+          level: :clear | :waiting | :attention,
+          headline: String.t(),
+          details: [String.t()]
+        }
+  def verdict(%Status{} = status, now) do
+    down = status |> runners() |> Enum.filter(&(&1.activity == :down))
+    unlisted = length(unlisted_workers(status))
+    queued = length(queue(status.slots))
+    parked = length(parked(status.slots))
+    running = running_jobs(status)
+    pool = utilisation(status.slots)
+    lock = lock_condition(status.device_lock)
+    gate = gate_summary(status.host, busy?(status))
+
+    problems =
+      [
+        if(down != [],
+          do:
+            "#{counted(length(down), "runner")} down: " <>
+              Enum.map_join(down, ", ", & &1.runner.name)
+        ),
+        if(status.runners == [], do: "No runners configured"),
+        if(unlisted > 0 and status.runners != [],
+          do:
+            "#{counted(unlisted, "job")} on #{if unlisted == 1, do: "a runner", else: "runners"} not in GRM_RUNNERS"
+        ),
+        if(lock == :stale, do: "Device lock is stale"),
+        if(lock == :orphaned, do: "Device lock held with no live wrapper")
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    details =
+      [
+        if(queued > 0,
+          do:
+            "#{counted(queued, "job")} waiting for slot units, longest #{format_duration(longest_wait(status.slots, now))}"
+        ),
+        if(parked > 0,
+          do:
+            "#{counted(parked, "job")} waiting for the device" <>
+              lock_holder_detail(status.device_lock)
+        ),
+        if(running > 0,
+          do: "#{counted(running, "job")} running, #{pool.free} of #{pool.capacity} units free"
+        ),
+        if(gate.state == :holding, do: gate.sentence)
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    {level, headline} =
+      cond do
+        problems != [] -> {:attention, Enum.join(problems, " · ")}
+        queued + parked > 0 -> {:waiting, "#{counted(queued + parked, "job")} waiting"}
+        running > 0 -> {:clear, "All clear: #{counted(running, "job")} running"}
+        true -> {:clear, "All clear: nothing running, nothing waiting"}
+      end
+
+    %{level: level, headline: headline, details: details}
+  end
+
+  # Jobs running, counted once per process: listed runners running a job,
+  # workers no runner claims, and slot holders, less anyone queued or parked.
+  defp running_jobs(%Status{slots: %Slots{records: records}} = status) do
+    waiting = for %SlotRecord{kind: kind, holder_pid: pid} <- records, kind != :holding, do: pid
+
+    running =
+      for(%{activity: :running, runner: runner} <- runners(status), do: runner.worker_pid) ++
+        Enum.map(unlisted_workers(status), & &1.pid) ++
+        for(%SlotRecord{kind: :holding, holder_pid: pid} <- records, do: pid)
+
+    running |> MapSet.new() |> MapSet.difference(MapSet.new(waiting)) |> MapSet.size()
+  end
+
+  defp counted(1, word), do: "1 #{word}"
+  defp counted(count, word), do: "#{count} #{word}s"
+
+  defp lock_holder_detail(%DeviceLock{state: :held, holder: %{alive: true} = holder}),
+    do: ", held by #{holder.repository}"
+
+  defp lock_holder_detail(_lock), do: ""
+
+  @doc "Whether a panel has nothing requiring a full card."
+  @spec quiet?(Status.t(), :queue | :slots | :device_lock | :events) :: boolean()
+  def quiet?(%Status{slots: slots}, :queue), do: queue(slots) == []
+
+  def quiet?(%Status{slots: slots}, :slots),
+    do: holders(slots) == [] and parked(slots) == [] and slots.used == 0
+
+  def quiet?(%Status{device_lock: lock}, :device_lock),
+    do: lock_condition(lock) in [:free, :absent]
+
+  def quiet?(%Status{events: events}, :events), do: events == []
+
   @doc """
   How full the pool is. `used` can exceed `capacity`: the gate admits an
   oversized job alone and admits anyone after the maximum wait.
@@ -163,6 +265,51 @@ defmodule Dashboard.Overview do
     %{load: load, memory: memory, open: load == :ok and memory == :ok}
   end
 
+  @doc "The gate sentence, warning only while work runs or waits."
+  @spec gate_summary(Host.t(), boolean()) :: %{
+          state: :open | :holding | :would_hold,
+          tone: :plain | :warn,
+          sentence: String.t()
+        }
+  def gate_summary(%Host{} = host, busy?) do
+    gate = load_gate(host)
+
+    reasons =
+      [
+        case gate.load do
+          :ok -> nil
+          :over -> "load #{format_number(host.load_1m)}, limit #{format_number(host.max_load)}"
+          :unknown -> "load reading unavailable"
+        end,
+        case gate.memory do
+          :ok ->
+            nil
+
+          :under ->
+            "#{format_memory(host.memory_available_mb)} GB free, minimum #{format_memory(host.min_memory_mb)} GB"
+
+          :unknown ->
+            "memory reading unavailable"
+        end
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("; ")
+
+    cond do
+      gate.open -> %{state: :open, tone: :plain, sentence: "Heavy steps may start"}
+      busy? -> %{state: :holding, tone: :warn, sentence: "Heavy steps are held: " <> reasons}
+      true -> %{state: :would_hold, tone: :plain, sentence: "Would hold heavy steps: " <> reasons}
+    end
+  end
+
+  @doc "A reading at or above its positive limit, as a multiple with one decimal."
+  @spec times_limit(number() | nil, number() | nil) :: String.t() | nil
+  def times_limit(value, limit)
+      when is_number(value) and is_number(limit) and limit > 0 and value >= limit,
+      do: :erlang.float_to_binary(value / limit, decimals: 1) <> "× the limit"
+
+  def times_limit(_value, _limit), do: nil
+
   defp compare_load(nil, _maximum), do: :unknown
   defp compare_load(_load, nil), do: :unknown
   defp compare_load(load, maximum) when load < maximum, do: :ok
@@ -202,6 +349,23 @@ defmodule Dashboard.Overview do
     do: "#{div(seconds, 86_400)}d #{pad(div(rem(seconds, 86_400), 3600))}h"
 
   defp pad(number), do: number |> Integer.to_string() |> String.pad_leading(2, "0")
+
+  @doc "The ages of the last successful host read and the last state change."
+  @spec freshness_label(non_neg_integer() | nil, non_neg_integer() | nil, non_neg_integer()) ::
+          String.t()
+  def freshness_label(fetched_at, changed_at, now) do
+    updated = "updated #{format_duration(elapsed(fetched_at, now))} ago"
+
+    if changed_at,
+      do: updated <> " · last change #{format_duration(elapsed(changed_at, now))} ago",
+      else: updated
+  end
+
+  @doc "Integers as-is, floats with two decimals, or an em dash for an unknown reading."
+  @spec format_number(number() | nil) :: String.t()
+  def format_number(nil), do: "—"
+  def format_number(value) when is_integer(value), do: Integer.to_string(value)
+  def format_number(value) when is_float(value), do: :erlang.float_to_binary(value, decimals: 2)
 
   @doc "Memory in gigabytes with one decimal, from mebibytes as the tools report them."
   @spec format_memory(non_neg_integer() | nil) :: String.t()

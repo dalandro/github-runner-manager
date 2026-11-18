@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "generated_at": 1767268800,
+  "host": {
+    "cpus": 6,
+    "load_1m": 7.4,
+    "max_load": 6,
+    "memory_available_mb": 5270,
+    "min_memory_mb": 3072
+  },
+  "runners": [
+    {
+      "name": "mobile-app",
+      "repository": "org/mobile-app",
+      "units": 3,
+      "labels": "self-hosted,linux,emulator",
+      "unit": "grm-runner-mobile-app.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "tablet-app",
+      "repository": "org/tablet-app",
+      "units": 3,
+      "labels": "self-hosted,linux,emulator",
+      "unit": "grm-runner-tablet-app.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "web-app",
+      "repository": "org/web-app",
+      "units": 2,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-web-app.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "data-pipeline",
+      "repository": "org/data-pipeline",
+      "units": 2,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-data-pipeline.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "api",
+      "repository": "org/api",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-api.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "docs-site",
+      "repository": "org/docs-site",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-docs-site.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "infra-tools",
+      "repository": "org/infra-tools",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-infra-tools.service",
+      "unit_state": "active",
+      "worker_pid": null
+    },
+    {
+      "name": "legacy-tools",
+      "repository": "org/legacy-tools",
+      "units": 1,
+      "labels": "self-hosted,linux",
+      "unit": "grm-runner-legacy-tools.service",
+      "unit_state": "active",
+      "worker_pid": null
+    }
+  ],
+  "workers": [],
+  "slots": {
+    "capacity": 6,
+    "used": 0,
+    "max_wait_seconds": 2700,
+    "records": []
+  },
+  "device_lock": {
+    "state": "free",
+    "holder": null,
+    "watchdog": {
+      "min_age_seconds": 600,
+      "kill": false,
+      "stale": []
+    }
+  },
+  "events": []
+}

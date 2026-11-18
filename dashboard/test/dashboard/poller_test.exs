@@ -38,6 +38,19 @@ defmodule Dashboard.PollerTest do
     assert is_integer(changed_at)
   end
 
+  test "a reading with the same picture still tells pages when it was read", context do
+    status = Fixtures.status()
+    later = %{status | generated_at: status.generated_at + 2}
+    # Over a second apart, so the second read has a later time in epoch seconds.
+    poller = start_poller(context, [{:ok, status}, {:ok, later}], interval: 1_100)
+
+    assert_receive {:snapshot, %Snapshot{fetched_at: first}}
+    assert_receive {:read_at, second}, 2_000
+    assert second > first
+    refute_received {:snapshot, _snapshot}
+    assert %Snapshot{fetched_at: ^second} = Poller.snapshot(poller)
+  end
+
   test "publishes when the picture changes", context do
     status = Fixtures.status()
     busier = %{status | slots: %{status.slots | used: 6}}

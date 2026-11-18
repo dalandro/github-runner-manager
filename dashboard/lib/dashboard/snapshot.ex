@@ -47,6 +47,13 @@ defmodule Dashboard.Snapshot do
   @spec changed?(t(), t()) :: boolean()
   def changed?(%__MODULE__{} = old, %__MODULE__{} = new), do: comparable(old) != comparable(new)
 
+  @doc "Whether a good reading arrived with a different fetch time."
+  @spec read_since?(t(), t()) :: boolean()
+  def read_since?(%__MODULE__{} = old, %__MODULE__{status: %Status{}, error: nil} = new),
+    do: new.fetched_at != old.fetched_at
+
+  def read_since?(%__MODULE__{}, %__MODULE__{}), do: false
+
   @doc """
   Whether the runner, slot, queue, lock or event picture changed. Load and
   memory are sampled on every reading, and a stale holder's age grows with
