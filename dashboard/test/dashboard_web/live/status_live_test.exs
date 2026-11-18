@@ -97,6 +97,14 @@ defmodule DashboardWeb.StatusLiveTest do
     assert has_element?(view, "#events", "Nothing has happened yet")
   end
 
+  test "with no runners listed, the empty state says how to point it at a config", %{conn: conn} do
+    start_poller(stub({:ok, Fixtures.unused_status()}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#runners", "defaults")
+    assert has_element?(view, "#runners", "GRM_CONFIG")
+  end
+
   test "a missing lock file is reported as just that", %{conn: conn} do
     start_poller(stub({:ok, Fixtures.unused_status()}))
     {:ok, view, _html} = live(conn, ~p"/")

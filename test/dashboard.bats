@@ -44,6 +44,16 @@ SCRIPT
   [[ $output == *'source=command command=/opt/configured-adapter'* ]]
 }
 
+@test "dashboard says when it runs on defaults for want of a config file" {
+  setup_dashboard
+  GRM_CONFIG="$BATS_TEST_TMPDIR/missing.env" run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output == *"no config file at $BATS_TEST_TMPDIR/missing.env"*'defaults'*'GRM_CONFIG'* ]]
+  run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output != *'defaults'* ]]
+}
+
 @test "dashboard --allow-host adds names to those from the environment" {
   setup_dashboard
   run "$GRM_ROOT/bin/grm-dashboard" --allow-host runner-host.private.example --viewer me@example.com

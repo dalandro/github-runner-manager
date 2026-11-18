@@ -253,7 +253,11 @@ defmodule DashboardWeb.StatusComponents do
         <p class="muted">{length(@rows)} configured</p>
       </header>
       <p :if={@rows == [] and @unlisted == []} class="empty">
-        No runners configured. List them in <code>GRM_RUNNERS</code>
+        No runners configured in <code>GRM_RUNNERS</code>.
+        With no config file, every setting uses defaults. Point <code>GRM_CONFIG</code>
+        at one (or copy <code>config.example.env</code>
+        to <code>config.env</code>),
+        then list runners in <code>GRM_RUNNERS</code>
         and install their units with <code>grm-install-runner</code>.
       </p>
       <div :if={@unlisted != []} id="unlisted-workers">
