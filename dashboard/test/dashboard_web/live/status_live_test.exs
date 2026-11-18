@@ -134,7 +134,8 @@ defmodule DashboardWeb.StatusLiveTest do
     assert has_element?(view, "#unlisted-workers", "2 jobs running on runners not in GRM_RUNNERS")
     assert has_element?(view, "#unlisted-workers", "/srv/runners/other")
     assert has_element?(view, "#unlisted-workers", "pid 60002")
-    refute has_element?(view, "#runners", "No runners configured")
+    # With no runners listed the tools may be on defaults; say how to point them at a config.
+    assert has_element?(view, "#runners", "GRM_CONFIG")
   end
 
   test "a stale device lock is called out with the process holding it", %{conn: conn} do

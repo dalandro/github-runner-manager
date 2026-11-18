@@ -252,7 +252,7 @@ defmodule DashboardWeb.StatusComponents do
         <h2 id="runners-title">Runners</h2>
         <p class="muted">{length(@rows)} configured</p>
       </header>
-      <p :if={@rows == [] and @unlisted == []} class="empty">
+      <p :if={@rows == []} class="empty">
         No runners configured in <code>GRM_RUNNERS</code>.
         With no config file, every setting uses defaults. Point <code>GRM_CONFIG</code>
         at one (or copy <code>config.example.env</code>
