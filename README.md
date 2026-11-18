@@ -63,8 +63,9 @@ Use a local filesystem.
    ```
 
    Existing active runners need an operator restart when idle to load `.env`
-   changes. Installation never restarts one implicitly. A user manager may need
-   lingering enabled by the operator to run after logout.
+   changes; see [upgrading](docs/runner-units.md#upgrading). Installation never
+   restarts one implicitly. A user manager may need lingering enabled by the
+   operator to run after logout.
 4. Use the wrappers in consumer workflows:
 
    ```bash

@@ -14,6 +14,7 @@ and reserving both job-hook keys, `GRM_JOB_UNITS`, and `GRM_CONFIG`. A config pa
 is written only when the selected config file exists. Repeated install removes
 duplicate managed entries. Pre-existing values of those reserved keys are not
 backed up; migrate any existing hook behaviour explicitly before installing.
+Hook paths end in `.sh` because the runner requires a script extension.
 
 Every install reloads the manager. `--enable` enables and starts an inactive unit;
 an already active unit is only enabled, with a reminder to restart when idle.
@@ -32,6 +33,22 @@ Systemd paths are quoted, escaping backslashes, quotes, specifiers and (for exec
 dollars. `GRM_SYSTEMCTL` is split into an argument array without shell evaluation;
 its executable path cannot contain spaces. Unit installation is not transactional
 with systemctl; a manager failure may leave rendered files for inspection/retry.
+
+## Upgrading
+
+A new version can change what the installer writes, such as the hook paths.
+Pull it, re-run the installer for each runner, then restart each runner unit
+when idle:
+
+```bash
+git pull
+bin/grm-install-runner repo-a   # once per runner; same flags as the first install
+systemctl --user restart grm-runner-repo-a.service   # GRM_UNIT_PREFIX + name
+```
+
+The installer replaces the managed `.env` keys, never appends. The runner reads
+`.env` only at startup, and the installer never restarts an active unit
+(`--enable` only enables it), so the restart is required.
 
 ## Hardening
 
