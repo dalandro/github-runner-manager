@@ -84,9 +84,9 @@ defmodule DashboardWeb.StatusComponents do
       if assigns.snapshot.error do
         %{
           level: :attention,
-          headline:
-            "Stale data: the last good reading is #{Overview.format_duration(Overview.elapsed(assigns.snapshot.fetched_at, assigns.now))} old",
+          headline: "Stale data: showing the last good reading",
           details: [
+            "It is #{Overview.format_duration(Overview.elapsed(assigns.snapshot.fetched_at, assigns.now))} old",
             "Reading failed: #{Source.describe_error(assigns.snapshot.error)}. Still retrying, less often."
           ]
         }
@@ -97,10 +97,13 @@ defmodule DashboardWeb.StatusComponents do
     assigns = assign(assigns, :verdict, verdict)
 
     ~H"""
-    <section id="verdict" class={["verdict", "verdict-#{@verdict.level}"]} role="status">
+    <section id="verdict" class={["verdict", "verdict-#{@verdict.level}"]}>
       <.icon name={verdict_icon(@verdict.level)} />
       <div>
-        <h2 class="verdict-headline">{@verdict.headline}</h2>
+        <%!-- Only the headline is a live region: the details count up every second. --%>
+        <div role="status">
+          <h2 class="verdict-headline">{@verdict.headline}</h2>
+        </div>
         <p :if={@verdict.details != []} class="verdict-details">
           {Enum.join(@verdict.details, " · ")}
         </p>

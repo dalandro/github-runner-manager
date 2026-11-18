@@ -53,6 +53,10 @@ defmodule DashboardWeb.StatusLiveTest do
       refute has_element?(view, "#gate.gate-warn")
       refute has_element?(view, "#quiet")
 
+      # Only the headline is announced; the details count up every second.
+      assert has_element?(view, "#verdict [role=status] .verdict-headline")
+      refute has_element?(view, "#verdict[role=status]")
+
       assert has_element?(view, "#runner-mobile-app", "Running")
       assert has_element?(view, "#runner-mobile-app", "has the device")
       assert has_element?(view, "#runner-tablet-app", "Waiting for device")
@@ -264,6 +268,14 @@ defmodule DashboardWeb.StatusLiveTest do
 
       # The verdict itself turns to the stale message.
       assert has_element?(view, "#verdict.verdict-attention", "Stale data")
+      # The announced headline stays put while the age counts up in the details.
+      assert has_element?(
+               view,
+               "#verdict .verdict-headline",
+               "Stale data: showing the last good reading"
+             )
+
+      assert has_element?(view, "#verdict .verdict-details", "It is")
       assert has_element?(view, "#verdict", "did not finish in time")
       refute has_element?(view, "#verdict", "runner down")
       assert has_element?(view, "#freshness", "Stale")
