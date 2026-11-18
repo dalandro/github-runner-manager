@@ -37,18 +37,20 @@ with systemctl; a manager failure may leave rendered files for inspection/retry.
 ## Upgrading
 
 A new version can change what the installer writes, such as the hook paths.
-Pull it, re-run the installer for each runner, then restart each runner unit
-when idle:
+Stop every runner using the checkout once idle, pull, re-run the installer for
+each runner, then start them:
 
 ```bash
+systemctl --user stop grm-runner-repo-a.service   # GRM_UNIT_PREFIX + name; each runner
 git pull
-bin/grm-install-runner repo-a   # once per runner; same flags as the first install
-systemctl --user restart grm-runner-repo-a.service   # GRM_UNIT_PREFIX + name
+bin/grm-install-runner repo-a   # each runner; same flags as the first install
+systemctl --user start grm-runner-repo-a.service   # each runner
 ```
 
-The installer replaces the managed `.env` keys, never appends. The runner reads
-`.env` only at startup, and the installer never restarts an active unit
-(`--enable` only enables it), so the restart is required.
+A running runner keeps the hook paths it read from `.env` at startup, so a pull
+under it can remove a hook its next job needs. The installer replaces the
+managed `.env` keys, never appends, and never restarts an active unit
+(`--enable` only enables it), so the stop and start are required.
 
 ## Hardening
 
