@@ -19,6 +19,8 @@ bin/grm-dashboard --port 4300 # default port is 4290 (or GRM_DASHBOARD_PORT)
 Then open <http://127.0.0.1:4290>. The first start fetches the Hex packages
 (network) and compiles; later starts take a few seconds.
 
+Set `GRM_STATUS_COMMAND` to another command that prints schema-1 JSON.
+
 ## Cost, and the fallback
 
 The dashboard is the one part of this toolkit that needs more than Bash: Erlang

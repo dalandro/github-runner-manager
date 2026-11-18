@@ -33,6 +33,17 @@ SCRIPT
   [[ $output == *'viewers=[]'* ]]
 }
 
+@test "dashboard keeps a status command the operator set" {
+  setup_dashboard
+  GRM_STATUS_COMMAND=/opt/status-adapter run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output == *'source=command command=/opt/status-adapter'* ]]
+  printf 'GRM_STATUS_COMMAND=/opt/configured-adapter\n' > "$BATS_TEST_TMPDIR/config.env"
+  GRM_CONFIG="$BATS_TEST_TMPDIR/config.env" run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output == *'source=command command=/opt/configured-adapter'* ]]
+}
+
 @test "dashboard --allow-host adds names to those from the environment" {
   setup_dashboard
   run "$GRM_ROOT/bin/grm-dashboard" --allow-host runner-host.private.example --viewer me@example.com
