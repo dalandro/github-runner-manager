@@ -130,8 +130,14 @@ defmodule DashboardWeb.StatusLiveTest do
     start_poller(stub({:ok, status}))
     {:ok, view, _html} = live(conn, ~p"/")
 
-    assert has_element?(view, "#tile-runners", "2 jobs on unlisted runners")
-    assert has_element?(view, "#unlisted-workers", "2 jobs running on runners not in GRM_RUNNERS")
+    assert has_element?(view, "#tile-runners", "2 jobs not matched to a runner")
+
+    assert has_element?(
+             view,
+             "#unlisted-workers",
+             "2 jobs running that no runner in GRM_RUNNERS matches"
+           )
+
     assert has_element?(view, "#unlisted-workers", "/srv/runners/other")
     assert has_element?(view, "#unlisted-workers", "pid 60002")
     # With no runners listed the tools may be on defaults; say how to point them at a config.

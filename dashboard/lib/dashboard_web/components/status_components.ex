@@ -147,7 +147,7 @@ defmodule DashboardWeb.StatusComponents do
         <:detail>
           {@counts.idle} idle<span :if={@counts.down > 0}> · {@counts.down} down</span>
           <span :if={@unlisted > 0}>
-            · {@unlisted} {plural(@unlisted, "job")} on unlisted runners
+            · {@unlisted} {plural(@unlisted, "job")} not matched to a runner
           </span>
         </:detail>
       </.tile>
@@ -262,7 +262,9 @@ defmodule DashboardWeb.StatusComponents do
       </p>
       <div :if={@unlisted != []} id="unlisted-workers">
         <p class="empty">
-          {length(@unlisted)} {plural(length(@unlisted), "job")} running on runners not in <code>GRM_RUNNERS</code>.
+          {length(@unlisted)} {plural(length(@unlisted), "job")} running that no runner in
+          <code>GRM_RUNNERS</code>
+          matches.
         </p>
         <ul class="rows">
           <li :for={worker <- @unlisted} class="row">
