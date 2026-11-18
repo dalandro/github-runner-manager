@@ -9,17 +9,28 @@ defmodule Dashboard.Status do
   them; `Dashboard.Overview` turns them into durations.
   """
 
-  alias __MODULE__.{DeviceLock, Event, Host, LockHolder, Runner, SlotRecord, Slots, StaleHolder}
+  alias __MODULE__.{
+    DeviceLock,
+    Event,
+    Host,
+    LockHolder,
+    Runner,
+    SlotRecord,
+    Slots,
+    StaleHolder,
+    Worker
+  }
 
   @schema 1
 
-  @enforce_keys [:generated_at, :host, :runners, :slots, :device_lock, :events]
-  defstruct [:generated_at, :host, :runners, :slots, :device_lock, :events]
+  @enforce_keys [:generated_at, :host, :runners, :workers, :slots, :device_lock, :events]
+  defstruct [:generated_at, :host, :runners, :workers, :slots, :device_lock, :events]
 
   @type t :: %__MODULE__{
           generated_at: non_neg_integer(),
           host: Host.t(),
           runners: [Runner.t()],
+          workers: [Worker.t()],
           slots: Slots.t(),
           device_lock: DeviceLock.t(),
           events: [Event.t()]
@@ -57,6 +68,17 @@ defmodule Dashboard.Status do
             unit: String.t(),
             unit_state: String.t(),
             worker_pid: pos_integer() | nil
+          }
+  end
+
+  defmodule Worker do
+    @moduledoc "A busy job worker and the runner directory its executable lives in."
+    @enforce_keys [:pid, :directory]
+    defstruct [:pid, :directory]
+
+    @type t :: %__MODULE__{
+            pid: pos_integer(),
+            directory: String.t()
           }
   end
 
@@ -163,6 +185,8 @@ defmodule Dashboard.Status do
        generated_at: integer!(document, "generated_at"),
        host: host!(map!(document, "host")),
        runners: document |> list!("runners") |> Enum.map(&runner!/1),
+       workers:
+         document |> Map.put_new("workers", []) |> list!("workers") |> Enum.map(&worker!/1),
        slots: slots!(map!(document, "slots")),
        device_lock: device_lock!(map!(document, "device_lock")),
        events: document |> list!("events") |> Enum.map(&event!/1)
@@ -197,6 +221,15 @@ defmodule Dashboard.Status do
   end
 
   defp runner!(_other), do: throw({:invalid_field, "runners"})
+
+  defp worker!(worker) when is_map(worker) do
+    %Worker{
+      pid: integer!(worker, "pid"),
+      directory: string!(worker, "directory")
+    }
+  end
+
+  defp worker!(_other), do: throw({:invalid_field, "workers"})
 
   defp slots!(slots) do
     %Slots{

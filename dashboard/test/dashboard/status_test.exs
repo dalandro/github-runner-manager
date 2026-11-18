@@ -2,7 +2,7 @@ defmodule Dashboard.StatusTest do
   use ExUnit.Case, async: true
 
   alias Dashboard.{Fixtures, Status}
-  alias Dashboard.Status.{DeviceLock, LockHolder, Runner, SlotRecord}
+  alias Dashboard.Status.{DeviceLock, LockHolder, Runner, SlotRecord, Worker}
 
   describe "parse/1" do
     test "turns the demo document into structs" do
@@ -22,6 +22,13 @@ defmodule Dashboard.StatusTest do
                status.device_lock
 
       assert length(status.events) == 11
+
+      assert %Worker{pid: 51_120, directory: "/srv/runners/mobile-app"} = hd(status.workers)
+    end
+
+    test "a document without workers, from an older producer, has none" do
+      assert {:ok, %Status{workers: []}} =
+               Fixtures.document() |> Map.delete("workers") |> Status.parse()
     end
 
     test "accepts the nulls the schema allows" do
@@ -53,6 +60,14 @@ defmodule Dashboard.StatusTest do
 
       assert {:error, {:invalid_field, "host"}} =
                Fixtures.document() |> Map.delete("host") |> Status.parse()
+
+      assert {:error, {:invalid_field, "directory"}} =
+               Fixtures.document()
+               |> update_in(["workers", Access.at(0)], &Map.delete(&1, "directory"))
+               |> Status.parse()
+
+      assert {:error, {:invalid_field, "workers"}} =
+               Fixtures.document() |> Map.put("workers", [51_120]) |> Status.parse()
 
       assert {:error, {:invalid_field, "ticket"}} =
                Fixtures.document()

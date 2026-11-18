@@ -131,6 +131,7 @@ defmodule DashboardWeb.StatusComponents do
     assigns =
       assigns
       |> assign(:counts, Overview.runner_counts(assigns.status))
+      |> assign(:unlisted, length(Overview.unlisted_workers(assigns.status)))
       |> assign(:pool, Overview.utilisation(assigns.status.slots))
       |> assign(:waiting, length(Overview.queue(assigns.status.slots)))
       |> assign(:longest, Overview.longest_wait(assigns.status.slots, assigns.now))
@@ -145,6 +146,9 @@ defmodule DashboardWeb.StatusComponents do
         </:value>
         <:detail>
           {@counts.idle} idle<span :if={@counts.down > 0}> · {@counts.down} down</span>
+          <span :if={@unlisted > 0}>
+            · {@unlisted} {plural(@unlisted, "job")} on unlisted runners
+          </span>
         </:detail>
       </.tile>
 
@@ -239,6 +243,7 @@ defmodule DashboardWeb.StatusComponents do
     assigns =
       assigns
       |> assign(:rows, Overview.runners(assigns.status))
+      |> assign(:unlisted, Overview.unlisted_workers(assigns.status))
       |> assign(:device_repository, device_repository(assigns.status.device_lock))
 
     ~H"""
@@ -247,10 +252,25 @@ defmodule DashboardWeb.StatusComponents do
         <h2 id="runners-title">Runners</h2>
         <p class="muted">{length(@rows)} configured</p>
       </header>
-      <p :if={@rows == []} class="empty">
+      <p :if={@rows == [] and @unlisted == []} class="empty">
         No runners configured. List them in <code>GRM_RUNNERS</code>
         and install their units with <code>grm-install-runner</code>.
       </p>
+      <div :if={@unlisted != []} id="unlisted-workers">
+        <p class="empty">
+          {length(@unlisted)} {plural(length(@unlisted), "job")} running on runners not in <code>GRM_RUNNERS</code>.
+        </p>
+        <ul class="rows">
+          <li :for={worker <- @unlisted} class="row">
+            <div class="row-main">
+              <p class="row-title">{worker.directory}</p>
+            </div>
+            <div class="row-side">
+              <p class="muted">pid {worker.pid}</p>
+            </div>
+          </li>
+        </ul>
+      </div>
       <ul :if={@rows != []} class="rows">
         <li :for={row <- @rows} class="row" id={"runner-#{row.runner.name}"}>
           <div class="row-main">

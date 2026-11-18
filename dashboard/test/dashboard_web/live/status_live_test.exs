@@ -99,6 +99,27 @@ defmodule DashboardWeb.StatusLiveTest do
     assert has_element?(view, "#tile-lock", "Unused")
   end
 
+  test "jobs on runners missing from GRM_RUNNERS are shown, not hidden", %{conn: conn} do
+    status =
+      Fixtures.status(fn document ->
+        document
+        |> Map.put("runners", [])
+        |> Map.put("workers", [
+          %{"pid" => 60_001, "directory" => "/srv/runners/other"},
+          %{"pid" => 60_002, "directory" => "/srv/runners/another"}
+        ])
+      end)
+
+    start_poller(stub({:ok, status}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#tile-runners", "2 jobs on unlisted runners")
+    assert has_element?(view, "#unlisted-workers", "2 jobs running on runners not in GRM_RUNNERS")
+    assert has_element?(view, "#unlisted-workers", "/srv/runners/other")
+    assert has_element?(view, "#unlisted-workers", "pid 60002")
+    refute has_element?(view, "#runners", "No runners configured")
+  end
+
   test "a stale device lock is called out with the process holding it", %{conn: conn} do
     start_poller(stub({:ok, Fixtures.stale_lock_status()}))
     {:ok, view, _html} = live(conn, ~p"/")

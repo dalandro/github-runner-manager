@@ -82,6 +82,28 @@
       "worker_pid": null
     }
   ],
+  "workers": [
+    {
+      "pid": 51120,
+      "directory": "/srv/runners/mobile-app"
+    },
+    {
+      "pid": 52291,
+      "directory": "/srv/runners/tablet-app"
+    },
+    {
+      "pid": 52877,
+      "directory": "/srv/runners/web-app"
+    },
+    {
+      "pid": 53310,
+      "directory": "/srv/runners/data-pipeline"
+    },
+    {
+      "pid": 53402,
+      "directory": "/srv/runners/api"
+    }
+  ],
   "slots": {
     "capacity": 6,
     "used": 5,

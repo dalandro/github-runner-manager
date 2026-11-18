@@ -26,6 +26,7 @@ defmodule Dashboard.Fixtures do
     status(fn document ->
       document
       |> Map.put("runners", [])
+      |> Map.put("workers", [])
       |> Map.put("events", [])
       |> put_in(["slots", "records"], [])
       |> put_in(["slots", "used"], 0)
