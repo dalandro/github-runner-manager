@@ -75,7 +75,7 @@ defmodule Dashboard.Overview do
     unlisted = length(unlisted_workers(status))
     queued = length(queue(status.slots))
     parked = length(parked(status.slots))
-    running = runner_counts(status).running + unlisted
+    running = running_jobs(status)
     pool = utilisation(status.slots)
     lock = lock_condition(status.device_lock)
     gate = gate_summary(status.host, busy?(status))
@@ -124,6 +124,19 @@ defmodule Dashboard.Overview do
       end
 
     %{level: level, headline: headline, details: details}
+  end
+
+  # Jobs running, counted once per process: listed runners running a job,
+  # workers no runner claims, and slot holders, less anyone queued or parked.
+  defp running_jobs(%Status{slots: %Slots{records: records}} = status) do
+    waiting = for %SlotRecord{kind: kind, holder_pid: pid} <- records, kind != :holding, do: pid
+
+    running =
+      for(%{activity: :running, runner: runner} <- runners(status), do: runner.worker_pid) ++
+        Enum.map(unlisted_workers(status), & &1.pid) ++
+        for(%SlotRecord{kind: :holding, holder_pid: pid} <- records, do: pid)
+
+    running |> MapSet.new() |> MapSet.difference(MapSet.new(waiting)) |> MapSet.size()
   end
 
   defp counted(1, word), do: "1 #{word}"

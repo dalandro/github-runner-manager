@@ -274,6 +274,44 @@ defmodule Dashboard.OverviewTest do
       assert Enum.any?(verdict.details, &(&1 =~ "1 job running"))
     end
 
+    test "a job on an unlisted runner that waits for units is waiting, not running" do
+      status =
+        Fixtures.idle_status(fn document ->
+          document
+          |> Map.put("workers", [%{"pid" => 60_001, "directory" => "/srv/runners/other"}])
+          |> put_in(["slots", "records"], [slot_record("queued", 60_001)])
+        end)
+
+      verdict = Overview.verdict(status, Fixtures.now())
+
+      assert Enum.any?(verdict.details, &(&1 =~ "1 job waiting for slot units"))
+      refute Enum.any?(verdict.details, &(&1 =~ "running"))
+    end
+
+    test "a slot holder no runner or worker accounts for still counts as running" do
+      status =
+        Fixtures.idle_status(fn document ->
+          document
+          |> put_in(["slots", "records"], [slot_record("holding", 70_001)])
+          |> put_in(["slots", "used"], 2)
+        end)
+
+      assert %{level: :clear, headline: "All clear: 1 job running"} =
+               Overview.verdict(status, Fixtures.now())
+    end
+
+    defp slot_record(kind, holder_pid) do
+      %{
+        "kind" => kind,
+        "ticket" => 50,
+        "holder_pid" => holder_pid,
+        "units" => 2,
+        "label" => "org/other",
+        "since" => Fixtures.now() - 30,
+        "unparking" => false
+      }
+    end
+
     test "a load gate holding heavy steps while jobs run is a detail, not a level" do
       status = running_status(&put_in(&1, ["host", "load_1m"], 7.2))
 
