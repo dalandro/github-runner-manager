@@ -134,7 +134,7 @@ defmodule Dashboard.Overview do
   @doc """
   The device lock in one word.
 
-    * `:absent` - never used on this host
+    * `:absent` - no file at the configured lock path
     * `:free` - nobody holds it
     * `:held` - held by a live wrapper, nothing suspicious
     * `:orphaned` - held, but no live wrapper claims it; the watchdog will call

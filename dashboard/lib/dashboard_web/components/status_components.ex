@@ -214,7 +214,7 @@ defmodule DashboardWeb.StatusComponents do
   defp pool_words(%{free: 0}), do: "full"
   defp pool_words(%{free: free}), do: "#{free} free"
 
-  defp lock_word(:absent), do: "Unused"
+  defp lock_word(:absent), do: "No lock file"
   defp lock_word(:free), do: "Free"
   defp lock_word(:held), do: "Held"
   defp lock_word(:orphaned), do: "Unclaimed"
@@ -232,7 +232,7 @@ defmodule DashboardWeb.StatusComponents do
 
   defp lock_summary(_lock, :orphaned, _now), do: "held, no live wrapper"
   defp lock_summary(_lock, :free, _now), do: "nobody has the device"
-  defp lock_summary(_lock, :absent, _now), do: "never taken on this host"
+  defp lock_summary(_lock, :absent, _now), do: "none at GRM_DEVICE_LOCK"
 
   ## Runners
 
@@ -474,7 +474,7 @@ defmodule DashboardWeb.StatusComponents do
       </header>
 
       <p :if={@condition == :absent} class="empty">
-        The device lock has never been taken on this host.
+        No lock file at the path in <code>GRM_DEVICE_LOCK</code>.
       </p>
       <p :if={@condition == :free} class="empty">Nobody has the device.</p>
 

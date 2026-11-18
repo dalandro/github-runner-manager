@@ -94,9 +94,18 @@ defmodule DashboardWeb.StatusLiveTest do
     assert has_element?(view, "#runners", "No runners configured")
     assert has_element?(view, "#slots", "No job holds units")
     assert has_element?(view, "#queue", "Nobody is waiting")
-    assert has_element?(view, "#device-lock", "never been taken")
     assert has_element?(view, "#events", "Nothing has happened yet")
-    assert has_element?(view, "#tile-lock", "Unused")
+  end
+
+  test "a missing lock file is reported as just that", %{conn: conn} do
+    start_poller(stub({:ok, Fixtures.unused_status()}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#device-lock", "No lock file at the path in GRM_DEVICE_LOCK")
+    assert has_element?(view, "#tile-lock", "No lock file")
+    refute has_element?(view, "#device-lock", "never")
+    refute has_element?(view, "#tile-lock", "never")
+    refute has_element?(view, "#tile-lock", "Unused")
   end
 
   test "jobs on runners missing from GRM_RUNNERS are shown, not hidden", %{conn: conn} do
