@@ -35,12 +35,41 @@ SCRIPT
   grep -F 'UNRELATED=value' "$GRM_RUNNERS_DIR/repo-a/.env"
   [ "$(grep -c '^GRM_JOB_UNITS=' "$GRM_RUNNERS_DIR/repo-a/.env")" -eq 1 ]
   grep -F 'GRM_JOB_UNITS=3' "$GRM_RUNNERS_DIR/repo-a/.env"
-  grep -F "ACTIONS_RUNNER_HOOK_JOB_STARTED=$(readlink -f "$GRM_ROOT/hooks/job-started")" "$GRM_RUNNERS_DIR/repo-a/.env"
+  grep -Fx "ACTIONS_RUNNER_HOOK_JOB_STARTED=$(readlink -f "$GRM_ROOT/hooks/job-started.sh")" "$GRM_RUNNERS_DIR/repo-a/.env"
+  grep -Fx "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$(readlink -f "$GRM_ROOT/hooks/job-completed.sh")" "$GRM_RUNNERS_DIR/repo-a/.env"
   grep -F "GRM_CONFIG=$GRM_CONFIG" "$GRM_RUNNERS_DIR/repo-a/.env"
   [ "$(stat -c %a "$GRM_RUNNERS_DIR/repo-a/.env")" = 600 ]
   grep -Fx 'daemon-reload' "$SYSTEMCTL_LOG"
   grep -Fx 'enable --now grm-runner-repo-a.service' "$SYSTEMCTL_LOG"
   [ -f "$GRM_SYSTEMD_USER_DIR/grm-stale-lock-watchdog.timer" ]
+}
+
+@test "install writes hook paths the Actions runner accepts" {
+  configure_runner
+  "$GRM_ROOT/bin/grm-install-runner" repo-a
+  local line path count=0
+  while IFS= read -r line; do
+    path=${line#*=}
+    # The runner runs a job hook only from an absolute path ending in the
+    # script extension of its language (.sh for Bash); any other path fails
+    # every job at "Set up runner".
+    [[ $path == /* && $path == *.sh && -x $path ]]
+    count=$((count + 1))
+  done < <(grep '^ACTIONS_RUNNER_HOOK_' "$GRM_RUNNERS_DIR/repo-a/.env")
+  [ "$count" -eq 2 ]
+}
+
+@test "reinstall replaces hook paths written by an older install" {
+  configure_runner
+  printf 'UNRELATED=value\nACTIONS_RUNNER_HOOK_JOB_STARTED=%s\nACTIONS_RUNNER_HOOK_JOB_COMPLETED=%s\n' \
+    "$GRM_ROOT/hooks/job-started" "$GRM_ROOT/hooks/job-completed" > "$GRM_RUNNERS_DIR/repo-a/.env"
+  "$GRM_ROOT/bin/grm-install-runner" repo-a
+  env=$GRM_RUNNERS_DIR/repo-a/.env
+  [ "$(grep -c '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$env")" -eq 1 ]
+  [ "$(grep -c '^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=' "$env")" -eq 1 ]
+  grep -Fx "ACTIONS_RUNNER_HOOK_JOB_STARTED=$(readlink -f "$GRM_ROOT/hooks/job-started.sh")" "$env"
+  grep -Fx "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$(readlink -f "$GRM_ROOT/hooks/job-completed.sh")" "$env"
+  grep -Fx 'UNRELATED=value' "$env"
 }
 
 @test "runner unit sets the hardening that needs no namespaces, and nothing a job relies on" {

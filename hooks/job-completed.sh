@@ -6,7 +6,7 @@ holder=$(find_worker_pid)
 if [[ ${1:-} == --holder && $# == 2 ]]; then
   holder=$2
 elif (($#)); then
-  usage_error 'usage: job-completed [--holder PID]'
+  usage_error 'usage: job-completed.sh [--holder PID]'
 fi
-[[ -n $holder ]] || usage_error 'job-completed must run as a runner job hook; use --holder for manual use'
+[[ -n $holder ]] || usage_error 'job-completed.sh must run as a runner job hook; use --holder for manual use'
 exec "$GRM_ROOT/bin/job-slots" release --holder "$holder"

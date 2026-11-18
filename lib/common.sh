@@ -215,7 +215,7 @@ write_runner_env() {
     awk '!/^(ACTIONS_RUNNER_HOOK_JOB_STARTED|ACTIONS_RUNNER_HOOK_JOB_COMPLETED|GRM_JOB_UNITS|GRM_CONFIG)=/' "$file" > "$temporary"
   fi
   if [[ $mode == install ]]; then
-    printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=%s/hooks/job-started\nACTIONS_RUNNER_HOOK_JOB_COMPLETED=%s/hooks/job-completed\nGRM_JOB_UNITS=%s\n' "$GRM_ROOT" "$GRM_ROOT" "$units" >> "$temporary"
+    printf 'ACTIONS_RUNNER_HOOK_JOB_STARTED=%s/hooks/job-started.sh\nACTIONS_RUNNER_HOOK_JOB_COMPLETED=%s/hooks/job-completed.sh\nGRM_JOB_UNITS=%s\n' "$GRM_ROOT" "$GRM_ROOT" "$units" >> "$temporary"
     if [[ -f $GRM_CONFIG ]]; then printf 'GRM_CONFIG=%s\n' "$GRM_CONFIG" >> "$temporary"; fi
   fi
   chmod 600 "$temporary"
