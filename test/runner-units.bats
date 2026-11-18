@@ -76,12 +76,14 @@ SCRIPT
   configure_runner
   "$GRM_ROOT/bin/grm-install-runner" repo-a
   unit=$GRM_SYSTEMD_USER_DIR/grm-runner-repo-a.service
-  for directive in NoNewPrivileges RestrictSUIDSGID LockPersonality RestrictRealtime; do
+  for directive in NoNewPrivileges LockPersonality RestrictRealtime; do
     grep -Fx "$directive=yes" "$unit"
   done
   # Decided off in docs/runner-units.md#hardening: each needs a namespace a
   # user manager may not get, or breaks JIT compilers, emulators or sandboxes.
-  ! grep -E '^(PrivateTmp|ProtectSystem|ProtectHome|PrivateDevices|PrivateUsers|ReadOnlyPaths|MemoryDenyWriteExecute|RestrictNamespaces|SystemCallArchitectures)=' "$unit"
+  # RestrictSUIDSGID is off too: a cold-booting emulator creates a setgid
+  # directory and crashes when the filter denies it.
+  ! grep -E '^(RestrictSUIDSGID|PrivateTmp|ProtectSystem|ProtectHome|PrivateDevices|PrivateUsers|ReadOnlyPaths|MemoryDenyWriteExecute|RestrictNamespaces|SystemCallArchitectures)=' "$unit"
 }
 
 @test "active runner is never implicitly restarted" {

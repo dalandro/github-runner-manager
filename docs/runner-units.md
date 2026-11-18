@@ -52,6 +52,8 @@ under it can remove a hook its next job needs. The installer replaces the
 managed `.env` keys, never appends, and never restarts an active unit
 (`--enable` only enables it), so the stop and start are required.
 
+A unit rendered by an older version may still carry `RestrictSUIDSGID=yes`. Installs pick up its removal the same way: once a runner is idle, stop it, pull, re-run the installer for it, and start it. Until then jobs on that runner that cold-boot an emulator keep failing.
+
 ## Hardening
 
 A runner runs whatever its jobs say, as its account. The unit narrows what a
@@ -66,7 +68,6 @@ On:
 | Setting | Effect | Why it is safe |
 | --- | --- | --- |
 | `NoNewPrivileges=yes` | No process in the unit gains privileges: set-user-ID programs such as `sudo` and `su` run without them. | Builds, emulators and the runner itself need no privileges. A job that relied on `sudo` stops working; give it a GitHub-hosted runner, or turn the setting off for that unit with `systemctl --user edit` and accept the risk. |
-| `RestrictSUIDSGID=yes` | Jobs cannot create set-user-ID or set-group-ID files. | Nothing in a build should. |
 | `LockPersonality=yes` | Jobs cannot change the kernel execution domain. | Only legacy emulation layers use it. |
 | `RestrictRealtime=yes` | Jobs cannot take real-time scheduling and starve the host. | Builds and emulators run at normal priority. |
 
@@ -74,6 +75,7 @@ Off, deliberately:
 
 | Setting | Why it is off |
 | --- | --- |
+| `RestrictSUIDSGID` | A cold boot of the Android emulator that wipes its data creates a directory with the set-group-ID bit (mode 02750). The filter denies it and the emulator crashes about a second after launch, so every job that cold-boots an emulator fails. |
 | `PrivateTmp`, `ProtectSystem`, `ProtectHome`, `ProtectKernelTunables`, `ProtectKernelModules`, `ProtectControlGroups`, `ReadOnlyPaths` | In a user unit each needs a user namespace. Where unprivileged user namespaces are turned off the runner would not start at all. `ProtectHome` and a strict `ProtectSystem` would also hide the runner directory, SDKs and caches in the home directory. `ReadOnlyPaths` on the toolkit would be the useful one, but a job can undo it through the user manager. |
 | `PrivateDevices` | Hides `/dev/kvm`, which emulator jobs need. |
 | `MemoryDenyWriteExecute` | Breaks JIT compilers: the JVM, Node.js, Android's tools. |
