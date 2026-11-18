@@ -52,6 +52,10 @@ SCRIPT
   GRM_CONFIG="$BATS_TEST_TMPDIR/missing.env" run "$GRM_ROOT/bin/grm-dashboard"
   [ "$status" -eq 0 ]
   [[ $output == *"no config file at $BATS_TEST_TMPDIR/missing.env"*'defaults'*'GRM_CONFIG'* ]]
+  [[ $output == *'create it from config.example.env'* ]]
+  GRM_CONFIG="$BATS_TEST_TMPDIR/missing.env" run "$GRM_ROOT/bin/grm-dashboard" --demo
+  [ "$status" -eq 0 ]
+  [[ $output != *'defaults'* ]]
   run "$GRM_ROOT/bin/grm-dashboard"
   [ "$status" -eq 0 ]
   [[ $output != *'defaults'* ]]

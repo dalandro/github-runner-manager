@@ -41,8 +41,9 @@ export PORT=$port PHX_SERVER=true MIX_ENV=prod
 export GRM_STATUS_COMMAND=${GRM_STATUS_COMMAND:-$GRM_ROOT/bin/grm-status} GRM_DASHBOARD_SOURCE=command
 export GRM_DASHBOARD_ALLOWED_HOSTS=$allowed_hosts GRM_DASHBOARD_VIEWERS=$viewers
 if ((demo)); then GRM_DASHBOARD_SOURCE=demo; fi
-if [[ ! -e $GRM_CONFIG ]]; then
-  printf 'grm-dashboard: no config file at %s, so running on defaults; set GRM_CONFIG to point at one (or copy config.example.env to config.env).\n' "$GRM_CONFIG"
+# -e, not -f: GRM_CONFIG=/dev/null is a deliberate "no config", not a missing one.
+if ((!demo)) && [[ ! -e $GRM_CONFIG ]]; then
+  printf 'grm-dashboard: no config file at %s, so running on defaults; set GRM_CONFIG to point at one, or create it from config.example.env.\n' "$GRM_CONFIG"
 fi
 release=$dashboard/_build/prod/rel/dashboard/bin/dashboard
 if [[ -x $release ]]; then
