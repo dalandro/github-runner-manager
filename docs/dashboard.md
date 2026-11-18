@@ -202,9 +202,13 @@ follow the system setting; the header button overrides it.
 
 ![Problem states](images/dashboard-problems-light.png)
 
-| Dark | Phone |
-| --- | --- |
-| ![Dark theme](images/dashboard-desktop-dark.png) | ![Phone width, dark](images/dashboard-phone-dark.png) |
+| Dark | Phone | Idle host, phone |
+| --- | --- | --- |
+| ![Dark theme](images/dashboard-desktop-dark.png) | ![Phone width, dark](images/dashboard-phone-dark.png) | ![Idle host at phone width, quiet panels collapsed](images/dashboard-idle-phone-light.png) |
+
+The problem and idle shots use the other demo readings in `dashboard/priv/demo/`:
+`GRM_DASHBOARD_DEMO_FILE="$PWD/dashboard/priv/demo/problems.json" bin/grm-dashboard --demo`
+(or `idle.json`; the path must be absolute, since the server runs in `dashboard/`).
 
 ## Running it permanently
 
