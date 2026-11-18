@@ -1,8 +1,9 @@
 defmodule DashboardWeb.StatusLive do
   @moduledoc """
-  The dashboard page. It holds two assigns that change: the latest
-  `Dashboard.Snapshot`, pushed by the poller over PubSub, and `now`, a
-  one-second clock so waits and hold times count up between readings.
+  The status board leads with a verdict and capacity strip, then active cards
+  and a compact quiet group. It holds two assigns that change: the latest
+  `Dashboard.Snapshot`, updated by snapshot and read-time PubSub messages,
+  and `now`, a one-second clock so waits and hold times count up between readings.
 
   Everything shown is derived from those two in `Dashboard.Overview`; the
   page keeps no state of its own and handles no events from the browser.
@@ -14,7 +15,7 @@ defmodule DashboardWeb.StatusLive do
 
   on_mount {DashboardWeb.ViewerAuth, :require_viewer}
 
-  alias Dashboard.Snapshot
+  alias Dashboard.{Overview, Snapshot}
 
   @tick_ms 1_000
 
@@ -38,6 +39,10 @@ defmodule DashboardWeb.StatusLive do
     {:noreply, assign(socket, :snapshot, snapshot)}
   end
 
+  def handle_info({:read_at, at}, socket) do
+    {:noreply, assign(socket, :snapshot, %{socket.assigns.snapshot | fetched_at: at})}
+  end
+
   def handle_info(:tick, socket) do
     {:noreply, assign(socket, :now, System.system_time(:second))}
   end
@@ -56,23 +61,39 @@ defmodule DashboardWeb.StatusLive do
         </p>
       </div>
 
-      <.stale_notice :if={@snapshot.error && @snapshot.status} snapshot={@snapshot} now={@now} />
-
       <main :if={@snapshot.status} id="overview">
-        <.summary status={@snapshot.status} now={@now} />
+        <.verdict_banner snapshot={@snapshot} now={@now} />
+        <.capacity_strip status={@snapshot.status} now={@now} />
 
         <div class="columns">
           <div class="column">
+            <.queue_card
+              :if={!Overview.quiet?(@snapshot.status, :queue)}
+              slots={@snapshot.status.slots}
+              now={@now}
+            />
             <.runners_card status={@snapshot.status} now={@now} />
-            <.slots_card slots={@snapshot.status.slots} now={@now} />
-            <.queue_card slots={@snapshot.status.slots} now={@now} />
+            <.slots_card
+              :if={!Overview.quiet?(@snapshot.status, :slots)}
+              slots={@snapshot.status.slots}
+              now={@now}
+            />
           </div>
           <div class="column">
-            <.device_lock_card lock={@snapshot.status.device_lock} now={@now} />
-            <.host_card host={@snapshot.status.host} />
-            <.events_card events={@snapshot.status.events} now={@now} />
+            <.device_lock_card
+              :if={!Overview.quiet?(@snapshot.status, :device_lock)}
+              lock={@snapshot.status.device_lock}
+              now={@now}
+            />
+            <.host_card host={@snapshot.status.host} busy={Overview.busy?(@snapshot.status)} />
+            <.events_card
+              :if={!Overview.quiet?(@snapshot.status, :events)}
+              events={@snapshot.status.events}
+              now={@now}
+            />
           </div>
         </div>
+        <.quiet_group status={@snapshot.status} />
       </main>
 
       <.no_reading :if={!@snapshot.status} snapshot={@snapshot} />

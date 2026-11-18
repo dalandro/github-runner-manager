@@ -88,7 +88,7 @@ flowchart LR
   demo["priv/demo/status.json"] --> demosource["Dashboard.Source.Demo"]
   source --> poller["Dashboard.Poller"]
   demosource --> poller
-  poller -- "PubSub, only on change" --> live["StatusLive (one per open page)"]
+  poller -- "PubSub: snapshot or read time" --> live["StatusLive (one per open page)"]
 ```
 
 **The seam is `grm-status --json`** ([schema](status-json.md)). The dashboard
@@ -110,17 +110,18 @@ the poller, the endpoint. Each read runs as a supervised task, so a slow or
 crashing status command neither blocks page loads nor takes the poller down.
 
 **Refresh.** The poller reads every 2 seconds (`GRM_DASHBOARD_INTERVAL_MS`) and
-broadcasts only when the picture differs from the previous one, ignoring the
-document's own timestamp. Pages keep a one-second clock of their own, so waits
-and hold times count up between readings without any message from the server
-side of the gates. One reading serves every open page.
+broadcasts a snapshot when the picture differs from the previous one, ignoring
+the document's own timestamp. An unchanged good reading sends only its read
+time. Pages keep a one-second clock, so waits and hold times count up between
+readings without a message from the gates. One reading serves every open page.
 
-The "changed ... ago" badge counts from the last change to runners, slots,
-queue, lock or events. Load and memory are sampled on every reading without
-moving that time; a failed read or recovery to the same picture does not move it.
+The header's "updated · last change" separates the last successful host read
+from the last change to runners, slots, queue, lock or events. Load and memory
+are sampled without moving the change time; failure or recovery to the same
+picture does not move it either.
 
-**When reading fails** the last good reading stays on screen under a "stale
-data" notice that says how old it is and why reading failed; retries back off
+**When reading fails** the last good reading stays on screen; the verdict turns
+to "Stale data", with its age and the read error. Retries back off
 exponentially to 30 seconds and return to the normal interval on the first
 success. If no reading has ever succeeded the page says so and shows no cards.
 If the browser loses the dashboard itself, the page says it is disconnected.
@@ -165,22 +166,39 @@ to install and nothing to download at build time beyond Hex packages.
 
 ## Reading the page
 
-Every status is written out and has its own icon shape; colour only reinforces
-it. Light and dark follow the system setting, and the button in the header
-overrides it.
+Every state has words and a shaped icon; colour reinforces it. Light and dark
+follow the system setting; the header button overrides it.
 
-- **Runners**: *Running* (a job holds units, or runs outside the slot gate),
-  *Waiting for slots* (queued), *Waiting for device* (parked: it gave its units
-  back while another job has the device), *Idle*, *Down* (the unit is not
-  active). A runner is matched to its job through the job worker's process id.
-- **Job slots**: one cell per unit; hatched cells past capacity mean the pool is
-  overcommitted, which the gate allows for an oversized job running alone and
-  for anyone past the maximum wait.
-- **Queue**: the order the gate will admit, with how long each job has waited.
-- **Device lock**: *Held* by a live wrapper; *Unclaimed* when it is held but the
-  recorded wrapper is gone; *Stale* when the watchdog reports a holder. The
-  dashboard never stops anything; it shows what the watchdog would do.
-- **Host**: the threshold is the mark at mid-scale on both meters.
+- **Verdict**, first: red *attention* for down runners, no configured runners,
+  jobs on unlisted runners, a stale lock or an unclaimed lock, in that order.
+  Otherwise amber *waiting* for jobs queued or parked; otherwise green *all
+  clear*, with the running count or "nothing running, nothing waiting".
+  Details show slot waits, device waits, running jobs and any held heavy steps.
+  A failed read replaces the verdict with the stale message.
+- **Capacity strip**: runners busy and idle/down; slot units used/free; total
+  waiting, split between slots and device, with the longest slot wait. Three
+  cells stay across on a phone. Coloured edges and icons flag down runners,
+  overcommit and waiting work.
+- **Cards**: queue first, then runners and slots; device lock, host and events
+  follow. Two columns on wide screens, one on a phone.
+- **Runners**: *Running* (holding units or outside the slot gate), *Waiting for
+  slots*, *Waiting for device* (parked, units returned), *Idle*, *Down* (unit
+  not active). Jobs match runners through their worker process id.
+- **Job slots**: one cell per unit while units are used. Hatched cells past
+  capacity mean overcommit: an oversized job entered alone or a job passed
+  the maximum wait. **Queue** lists admission order and wait times.
+- **Device lock**: *Held* by a live wrapper; *Unclaimed* when its wrapper is
+  gone; *Stale* when the watchdog reports a holder. The page never stops jobs.
+- **Host**: "Heavy steps may start" when the gate is open; "Heavy steps are
+  held" when closed while work runs or waits; "Would hold heavy steps" when
+  idle. Only actual holding is amber: an idle host has no work to delay.
+  Reasons name load/memory limits or missing readings. The meters label their
+  threshold at mid-scale; load at or above its limit also shows the multiple.
+- **Quiet**: empty queue, unused slots, free/absent device lock and empty events
+  become muted rows below the cards, in that order. No empty cards or pool.
+- **Freshness**: "updated" is the last successful read of the host; "last
+  change" is when runners, slots, queue, lock or events last changed. A quiet
+  host still updates; load/memory samples do not move the change time.
 
 ![Problem states](images/dashboard-problems-light.png)
 

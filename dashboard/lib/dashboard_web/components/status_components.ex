@@ -1,8 +1,7 @@
 defmodule DashboardWeb.StatusComponents do
   @moduledoc """
-  Function components for the dashboard page: a header, a row of summary
-  tiles, and one card per mechanism (runners, job slots, queue, device lock,
-  host, events).
+  Function components for the status board: freshness header, verdict,
+  capacity strip, active mechanism cards and a compact quiet group.
 
   Every status is stated in words and marked with a shaped icon; colour only
   reinforces it. Components take structs and `now`, call `Dashboard.Overview`
@@ -56,11 +55,11 @@ defmodule DashboardWeb.StatusComponents do
     <span
       class="badge badge-ok"
       id="freshness"
-      title="Time since runners, slots, queue, lock or events last changed. Load and memory are sampled on every reading."
+      title="Updated: last successful read of the host. Last change: runners, slots, queue, lock or events last changed. Load and memory are sampled on every reading."
     >
-      <.icon name={:ok} /> Live
+      <.icon name={:ok} />
       <span class="badge-detail">
-        changed {Overview.format_duration(Overview.elapsed(@snapshot.changed_at, @now))} ago
+        {Overview.freshness_label(@snapshot.fetched_at, @snapshot.changed_at, @now)}
       </span>
     </span>
     """
@@ -80,21 +79,39 @@ defmodule DashboardWeb.StatusComponents do
   attr :snapshot, Snapshot, required: true
   attr :now, :integer, required: true
 
-  def stale_notice(assigns) do
+  def verdict_banner(assigns) do
+    verdict =
+      if assigns.snapshot.error do
+        %{
+          level: :attention,
+          headline:
+            "Stale data: the last good reading is #{Overview.format_duration(Overview.elapsed(assigns.snapshot.fetched_at, assigns.now))} old",
+          details: [
+            "Reading failed: #{Source.describe_error(assigns.snapshot.error)}. Still retrying, less often."
+          ]
+        }
+      else
+        Overview.verdict(assigns.snapshot.status, assigns.now)
+      end
+
+    assigns = assign(assigns, :verdict, verdict)
+
     ~H"""
-    <div class="notice notice-bad" role="status" id="stale-notice">
-      <.icon name={:problem} />
-      <p>
-        <strong>
-          Stale data: the last good reading is {Overview.format_duration(
-            Overview.elapsed(@snapshot.stale_since, @now)
-          )} old.
-        </strong>
-        Reading failed: {Source.describe_error(@snapshot.error)}. Still retrying, less often.
-      </p>
-    </div>
+    <section id="verdict" class={["verdict", "verdict-#{@verdict.level}"]} role="status">
+      <.icon name={verdict_icon(@verdict.level)} />
+      <div>
+        <h2 class="verdict-headline">{@verdict.headline}</h2>
+        <p :if={@verdict.details != []} class="verdict-details">
+          {Enum.join(@verdict.details, " · ")}
+        </p>
+      </div>
+    </section>
     """
   end
+
+  defp verdict_icon(:clear), do: :ok
+  defp verdict_icon(:waiting), do: :waiting
+  defp verdict_icon(:attention), do: :problem
 
   attr :snapshot, Snapshot, required: true
 
@@ -122,66 +139,58 @@ defmodule DashboardWeb.StatusComponents do
     """
   end
 
-  ## Summary tiles
+  ## Capacity strip and quiet panels
 
   attr :status, Status, required: true
   attr :now, :integer, required: true
 
-  def summary(assigns) do
+  def capacity_strip(assigns) do
     assigns =
       assigns
       |> assign(:counts, Overview.runner_counts(assigns.status))
       |> assign(:unlisted, length(Overview.unlisted_workers(assigns.status)))
       |> assign(:pool, Overview.utilisation(assigns.status.slots))
-      |> assign(:waiting, length(Overview.queue(assigns.status.slots)))
+      |> assign(:queued, length(Overview.queue(assigns.status.slots)))
+      |> assign(:parked, length(Overview.parked(assigns.status.slots)))
       |> assign(:longest, Overview.longest_wait(assigns.status.slots, assigns.now))
-      |> assign(:lock, Overview.lock_condition(assigns.status.device_lock))
-      |> assign(:gate, Overview.load_gate(assigns.status.host))
 
     ~H"""
-    <section class="summary" aria-label="Summary">
-      <.tile label="Runners" id="tile-runners" tone={if @counts.down > 0, do: :bad, else: :plain}>
+    <section id="strip" class="strip" aria-label="Capacity">
+      <.strip_cell
+        label="Runners"
+        id="strip-runners"
+        tone={if @counts.down > 0, do: :bad, else: :plain}
+      >
         <:value>
-          {busy(@counts)}<span class="tile-of"> / {length(@status.runners)} busy</span>
+          {@counts.running + @counts.queued + @counts.parked} / {length(@status.runners)} busy
         </:value>
         <:detail>
           {@counts.idle} idle<span :if={@counts.down > 0}> · {@counts.down} down</span>
-          <span :if={@unlisted > 0}>
-            · {@unlisted} {plural(@unlisted, "job")} not matched to a runner
-          </span>
+          <span :if={@unlisted > 0}> · {@unlisted} {plural(@unlisted, "job")} not matched to a runner</span>
         </:detail>
-      </.tile>
-
-      <.tile label="Job slots" id="tile-slots" tone={if @pool.overcommitted, do: :warn, else: :plain}>
-        <:value>
-          {@pool.used}<span class="tile-of"> / {@pool.capacity} units</span>
-        </:value>
+      </.strip_cell>
+      <.strip_cell
+        label="Job slots"
+        id="strip-slots"
+        tone={if @pool.overcommitted, do: :warn, else: :plain}
+      >
+        <:value>{@pool.used} / {@pool.capacity} units</:value>
         <:detail>{pool_words(@pool)}</:detail>
-      </.tile>
-
-      <.tile label="Queue" id="tile-queue" tone={if @waiting > 0, do: :warn, else: :plain}>
-        <:value>
-          {@waiting}<span class="tile-of"> waiting</span>
-        </:value>
+      </.strip_cell>
+      <.strip_cell
+        label="Waiting"
+        id="strip-waiting"
+        tone={if @queued + @parked > 0, do: :warn, else: :plain}
+      >
+        <:value>{@queued + @parked} waiting</:value>
         <:detail>
-          <span :if={@waiting == 0}>nobody is held back</span>
-          <span :if={@waiting > 0}>longest {Overview.format_duration(@longest)}</span>
+          <span :if={@queued + @parked == 0}>nobody is held back</span>
+          <span :if={@queued > 0}>{@queued} for slots</span>
+          <span :if={@queued > 0 and @parked > 0}> · </span>
+          <span :if={@parked > 0}>{@parked} for the device</span>
+          <span :if={@longest != nil}> · longest {Overview.format_duration(@longest)}</span>
         </:detail>
-      </.tile>
-
-      <.tile label="Device lock" id="tile-lock" tone={lock_tone(@lock)}>
-        <:value>{lock_word(@lock)}</:value>
-        <:detail>{lock_summary(@status.device_lock, @lock, @now)}</:detail>
-      </.tile>
-
-      <.tile label="Load gate" id="tile-gate" tone={if @gate.open, do: :plain, else: :warn}>
-        <:value>{if @gate.open, do: "Open", else: "Closed"}</:value>
-        <:detail>
-          load {number(@status.host.load_1m)} / {number(@status.host.max_load)} · {Overview.format_memory(
-            @status.host.memory_available_mb
-          )} GB free
-        </:detail>
-      </.tile>
+      </.strip_cell>
     </section>
     """
   end
@@ -192,21 +201,50 @@ defmodule DashboardWeb.StatusComponents do
   slot :value, required: true
   slot :detail, required: true
 
-  defp tile(assigns) do
+  defp strip_cell(assigns) do
     ~H"""
-    <div class={["tile", "tile-#{@tone}"]} id={@id}>
-      <p class="tile-label">
-        {@label}
-        <.icon :if={@tone == :warn} name={:attention} />
-        <.icon :if={@tone == :bad} name={:problem} />
-      </p>
-      <p class="tile-value">{render_slot(@value)}</p>
-      <p class="tile-detail">{render_slot(@detail)}</p>
+    <div class={["strip-cell", "strip-#{@tone}"]} id={@id}>
+      <p class="strip-label"><.icon name={strip_icon(@tone)} /> {@label}</p>
+      <p class="strip-value">{render_slot(@value)}</p>
+      <p class="strip-detail">{render_slot(@detail)}</p>
     </div>
     """
   end
 
-  defp busy(counts), do: counts.running + counts.queued + counts.parked
+  defp strip_icon(:plain), do: :info
+  defp strip_icon(:warn), do: :attention
+  defp strip_icon(:bad), do: :problem
+
+  attr :status, Status, required: true
+
+  def quiet_group(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :panels,
+        Enum.filter([:queue, :slots, :device_lock, :events], &Overview.quiet?(assigns.status, &1))
+      )
+
+    ~H"""
+    <section :if={@panels != []} id="quiet" class="quiet" aria-labelledby="quiet-title">
+      <h2 id="quiet-title">Quiet</h2>
+      <p :for={panel <- @panels} id={"quiet-#{String.replace(Atom.to_string(panel), "_", "-")}"}>
+        <.icon name={:idle} /> {quiet_words(@status, panel)}
+      </p>
+    </section>
+    """
+  end
+
+  defp quiet_words(_status, :queue), do: "Queue: empty"
+  defp quiet_words(status, :slots), do: "Job slots: 0 of #{status.slots.capacity} units in use"
+
+  defp quiet_words(status, :device_lock) do
+    if Overview.lock_condition(status.device_lock) == :absent,
+      do: "Device lock: no lock file at GRM_DEVICE_LOCK",
+      else: "Device lock: free"
+  end
+
+  defp quiet_words(_status, :events), do: "Events: none yet"
 
   defp pool_words(%{overcommitted: true} = pool),
     do: "overcommitted by #{pool.used - pool.capacity}"
@@ -214,25 +252,9 @@ defmodule DashboardWeb.StatusComponents do
   defp pool_words(%{free: 0}), do: "full"
   defp pool_words(%{free: free}), do: "#{free} free"
 
-  defp lock_word(:absent), do: "No lock file"
-  defp lock_word(:free), do: "Free"
   defp lock_word(:held), do: "Held"
   defp lock_word(:orphaned), do: "Unclaimed"
   defp lock_word(:stale), do: "Stale"
-
-  defp lock_tone(:stale), do: :bad
-  defp lock_tone(:orphaned), do: :warn
-  defp lock_tone(_condition), do: :plain
-
-  defp lock_summary(%DeviceLock{holder: holder}, :held, now),
-    do: "#{holder.repository} · #{Overview.format_duration(Overview.elapsed(holder.since, now))}"
-
-  defp lock_summary(%DeviceLock{stale: stale}, :stale, _now),
-    do: "#{length(stale)} stale #{plural(length(stale), "holder")}"
-
-  defp lock_summary(_lock, :orphaned, _now), do: "held, no live wrapper"
-  defp lock_summary(_lock, :free, _now), do: "nobody has the device"
-  defp lock_summary(_lock, :absent, _now), do: "none at GRM_DEVICE_LOCK"
 
   ## Runners
 
@@ -356,6 +378,7 @@ defmodule DashboardWeb.StatusComponents do
       </header>
 
       <div
+        :if={@pool.used > 0}
         class="pool"
         role="img"
         aria-label={"#{@pool.used} of #{@pool.capacity} units in use, #{pool_words(@pool)}"}
@@ -437,10 +460,11 @@ defmodule DashboardWeb.StatusComponents do
     <section class="card" id="queue" aria-labelledby="queue-title">
       <header class="card-header">
         <h2 id="queue-title">Queue</h2>
-        <p class="muted">admitted in this order</p>
+        <p class="muted">
+          <span id="tile-queue">{length(@queue)} waiting</span> · admitted in this order
+        </p>
       </header>
-      <p :if={@queue == []} class="empty">Nobody is waiting for units.</p>
-      <ol :if={@queue != []} class="rows rows-tight queue">
+      <ol class="rows rows-tight queue">
         <li :for={{record, index} <- Enum.with_index(@queue, 1)} class="row">
           <span class="position" aria-hidden="true">{index}</span>
           <div class="row-main">
@@ -478,11 +502,6 @@ defmodule DashboardWeb.StatusComponents do
           <.icon name={lock_icon(@condition)} /> {lock_word(@condition)}
         </p>
       </header>
-
-      <p :if={@condition == :absent} class="empty">
-        No lock file at the path in <code>GRM_DEVICE_LOCK</code>.
-      </p>
-      <p :if={@condition == :free} class="empty">Nobody has the device.</p>
 
       <dl :if={@lock.state == :held and @lock.holder} class="facts">
         <div>
@@ -540,7 +559,7 @@ defmodule DashboardWeb.StatusComponents do
         </div>
       </div>
 
-      <p :if={@condition in [:free, :held]} class="muted watchdog">
+      <p :if={@condition == :held} class="muted watchdog">
         Watchdog: no stale holders. It reports holders older than {Overview.format_duration(
           @lock.watchdog_min_age_seconds
         )}{if @lock.watchdog_kill, do: " and stops allow-listed ones", else: ", report-only"}.
@@ -549,8 +568,6 @@ defmodule DashboardWeb.StatusComponents do
     """
   end
 
-  defp lock_icon(:absent), do: :idle
-  defp lock_icon(:free), do: :idle
   defp lock_icon(:held), do: :active
   defp lock_icon(:orphaned), do: :attention
   defp lock_icon(:stale), do: :problem
@@ -558,29 +575,39 @@ defmodule DashboardWeb.StatusComponents do
   ## Host
 
   attr :host, Host, required: true
+  attr :busy, :boolean, required: true
 
   def host_card(assigns) do
-    assigns = assign(assigns, :gate, Overview.load_gate(assigns.host))
+    assigns =
+      assigns
+      |> assign(:gate, Overview.gate_summary(assigns.host, assigns.busy))
+      |> assign(:readings, Overview.load_gate(assigns.host))
+      |> assign(:multiple, Overview.times_limit(assigns.host.load_1m, assigns.host.max_load))
 
     ~H"""
     <section class="card" id="host" aria-labelledby="host-title">
       <header class="card-header">
         <h2 id="host-title">Host</h2>
-        <p class={["state", if(@gate.open, do: "state-idle", else: "state-queued")]}>
-          <.icon name={if @gate.open, do: :ok, else: :attention} />
-          {if @gate.open, do: "Load gate open", else: "Load gate closed"}
-        </p>
       </header>
+      <p id="gate" class={["gate", "gate-#{@gate.tone}"]}>
+        <.icon name={gate_icon(@gate.state)} /> {@gate.sentence}
+      </p>
 
       <div class="meters">
         <.meter
           id="meter-load"
           label="Load, 1 min"
-          value={number(@host.load_1m)}
-          limit={"limit #{number(@host.max_load)}"}
+          value={Overview.format_number(@host.load_1m)}
+          limit={
+            Enum.join(
+              Enum.reject(["limit #{Overview.format_number(@host.max_load)}", @multiple], &is_nil/1),
+              " · "
+            )
+          }
+          mark="limit"
           percent={Overview.meter_percent(@host.load_1m, @host.max_load && @host.max_load * 2)}
-          verdict={load_verdict(@gate.load)}
-          problem={@gate.load != :ok}
+          verdict={load_verdict(@readings.load)}
+          problem={@gate.tone == :warn and @readings.load != :ok}
         />
         <.meter
           id="meter-memory"
@@ -593,8 +620,8 @@ defmodule DashboardWeb.StatusComponents do
               @host.min_memory_mb && @host.min_memory_mb * 2
             )
           }
-          verdict={memory_verdict(@gate.memory)}
-          problem={@gate.memory != :ok}
+          verdict={memory_verdict(@readings.memory)}
+          problem={@gate.tone == :warn and @readings.memory != :ok}
         />
       </div>
       <p class="muted">
@@ -611,6 +638,7 @@ defmodule DashboardWeb.StatusComponents do
   attr :label, :string, required: true
   attr :value, :string, required: true
   attr :limit, :string, required: true
+  attr :mark, :string, default: "minimum"
   attr :percent, :integer, required: true
   attr :verdict, :string, required: true
   attr :problem, :boolean, required: true
@@ -629,6 +657,7 @@ defmodule DashboardWeb.StatusComponents do
         <rect class="meter-fill" width={"#{@percent}%"} height="100%" rx="5" />
         <rect class="meter-mark" x="50%" width="2" height="100%" />
       </svg>
+      <p class="meter-caption" aria-hidden="true">{@mark}</p>
       <p class="muted">
         {@limit} ·
         <span class={@problem && "state state-queued"}>
@@ -638,6 +667,10 @@ defmodule DashboardWeb.StatusComponents do
     </div>
     """
   end
+
+  defp gate_icon(:open), do: :ok
+  defp gate_icon(:holding), do: :attention
+  defp gate_icon(:would_hold), do: :idle
 
   defp load_verdict(:ok), do: "below the limit"
   defp load_verdict(:over), do: "at or over the limit"
@@ -662,8 +695,7 @@ defmodule DashboardWeb.StatusComponents do
         <h2 id="events-title">Recent events</h2>
         <p class="muted">newest first</p>
       </header>
-      <p :if={@recent == []} class="empty">Nothing has happened yet.</p>
-      <ul :if={@recent != []} class="events">
+      <ul class="events">
         <li :for={event <- @recent}>
           <span class="event-time">
             {Overview.format_duration(Overview.elapsed(event.at, @now))} ago
@@ -754,8 +786,4 @@ defmodule DashboardWeb.StatusComponents do
 
   defp plural(1, word), do: word
   defp plural(_count, word), do: word <> "s"
-
-  defp number(nil), do: "—"
-  defp number(value) when is_integer(value), do: Integer.to_string(value)
-  defp number(value) when is_float(value), do: :erlang.float_to_binary(value, decimals: 2)
 end

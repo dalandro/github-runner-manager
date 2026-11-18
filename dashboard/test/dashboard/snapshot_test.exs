@@ -74,6 +74,16 @@ defmodule Dashboard.SnapshotTest do
     assert Snapshot.state_changed?(old, Snapshot.succeed(old, freed, 1_002))
   end
 
+  test "read_since?/2 is true when a newer good reading arrived, whatever it shows" do
+    status = Fixtures.status()
+    old = Snapshot.succeed(%Snapshot{}, status, 1_000)
+    same = Snapshot.succeed(old, status, 1_002)
+
+    assert Snapshot.read_since?(old, same)
+    refute Snapshot.read_since?(old, old)
+    refute Snapshot.read_since?(old, Snapshot.fail(old, :timeout, 1_002))
+  end
+
   test "a failure and a recovery to the same picture are not changes of state" do
     old = Snapshot.succeed(%Snapshot{}, Fixtures.status(), 1_000)
     failed = Snapshot.fail(old, :timeout, 1_002)
