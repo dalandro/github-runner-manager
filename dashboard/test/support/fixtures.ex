@@ -21,7 +21,7 @@ defmodule Dashboard.Fixtures do
     status
   end
 
-  @doc "A host that has been configured but never used."
+  @doc "A host with no runners listed, no jobs and no lock file."
   def unused_status do
     status(fn document ->
       document
