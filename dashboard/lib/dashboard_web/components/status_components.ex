@@ -260,23 +260,6 @@ defmodule DashboardWeb.StatusComponents do
         then list runners in <code>GRM_RUNNERS</code>
         and install their units with <code>grm-install-runner</code>.
       </p>
-      <div :if={@unlisted != []} id="unlisted-workers">
-        <p class="empty">
-          {length(@unlisted)} {plural(length(@unlisted), "job")} running that no runner in
-          <code>GRM_RUNNERS</code>
-          matches.
-        </p>
-        <ul class="rows">
-          <li :for={worker <- @unlisted} class="row">
-            <div class="row-main">
-              <p class="row-title">{worker.directory}</p>
-            </div>
-            <div class="row-side">
-              <p class="muted">pid {worker.pid}</p>
-            </div>
-          </li>
-        </ul>
-      </div>
       <ul :if={@rows != []} class="rows">
         <li :for={row <- @rows} class="row" id={"runner-#{row.runner.name}"}>
           <div class="row-main">
@@ -299,6 +282,23 @@ defmodule DashboardWeb.StatusComponents do
           </div>
         </li>
       </ul>
+      <div :if={@unlisted != []} id="unlisted-workers">
+        <p>
+          {length(@unlisted)} {plural(length(@unlisted), "job")} running that no runner in
+          <code>GRM_RUNNERS</code>
+          matches.
+        </p>
+        <ul class="rows">
+          <li :for={worker <- @unlisted} class="row" id={"worker-#{worker.pid}"}>
+            <div class="row-main">
+              <p class="row-title">{worker.directory}</p>
+            </div>
+            <div class="row-side">
+              <p class="muted">pid {worker.pid}</p>
+            </div>
+          </li>
+        </ul>
+      </div>
     </section>
     """
   end

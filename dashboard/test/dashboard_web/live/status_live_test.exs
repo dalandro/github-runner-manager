@@ -139,7 +139,7 @@ defmodule DashboardWeb.StatusLiveTest do
            )
 
     assert has_element?(view, "#unlisted-workers", "/srv/runners/other")
-    assert has_element?(view, "#unlisted-workers", "pid 60002")
+    assert has_element?(view, "#worker-60002", "pid 60002")
     # With no runners listed the tools may be on defaults; say how to point them at a config.
     assert has_element?(view, "#runners", "GRM_CONFIG")
   end
