@@ -426,7 +426,7 @@ defmodule Dashboard.OverviewTest do
             slots
             |> Map.put("used", 0)
             |> Map.update!("records", fn records ->
-              Enum.filter(records, fn r -> r["kind"] == "parked" end)
+              Enum.filter(records, fn record -> record["kind"] == "parked" end)
             end)
           end)
         )
@@ -437,7 +437,7 @@ defmodule Dashboard.OverviewTest do
             slots
             |> Map.put("used", 0)
             |> Map.update!("records", fn records ->
-              Enum.filter(records, fn r -> r["kind"] == "queued" end)
+              Enum.filter(records, fn record -> record["kind"] == "queued" end)
             end)
           end)
         )
