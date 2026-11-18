@@ -54,6 +54,15 @@ defmodule Dashboard.SnapshotTest do
     refute Snapshot.state_changed?(old, new)
   end
 
+  test "a stale holder growing older is not a change of state" do
+    status = Fixtures.stale_lock_status()
+    old = Snapshot.succeed(%Snapshot{}, status, 1_000)
+    [holder] = status.device_lock.stale
+    older = put_in(status.device_lock.stale, [%{holder | age_seconds: holder.age_seconds + 2}])
+
+    refute Snapshot.state_changed?(old, Snapshot.succeed(old, older, 1_002))
+  end
+
   test "the first reading and a different runner, slot or lock picture change state" do
     status = Fixtures.status()
     old = Snapshot.succeed(%Snapshot{}, status, 1_000)

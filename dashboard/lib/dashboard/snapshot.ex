@@ -49,7 +49,8 @@ defmodule Dashboard.Snapshot do
 
   @doc """
   Whether the runner, slot, queue, lock or event picture changed. Load and
-  memory are sampled on every reading; failures and read times do not count.
+  memory are sampled on every reading, and a stale holder's age grows with
+  every reading; neither counts, nor do failures and read times.
   """
   @spec state_changed?(t(), t()) :: boolean()
   def state_changed?(%__MODULE__{status: old}, %__MODULE__{status: new}),
@@ -65,7 +66,11 @@ defmodule Dashboard.Snapshot do
     do: %{
       status
       | generated_at: nil,
-        host: %{status.host | load_1m: nil, memory_available_mb: nil}
+        host: %{status.host | load_1m: nil, memory_available_mb: nil},
+        device_lock: %{
+          status.device_lock
+          | stale: Enum.map(status.device_lock.stale, &%{&1 | age_seconds: nil})
+        }
     }
 
   defp comparable(%__MODULE__{status: status} = snapshot) do
