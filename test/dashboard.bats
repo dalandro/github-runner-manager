@@ -42,7 +42,7 @@ SCRIPT
   GRM_CONFIG="$BATS_TEST_TMPDIR/config.env" run "$GRM_ROOT/bin/grm-dashboard"
   [ "$status" -eq 0 ]
   [[ $output == *'source=command command=/opt/configured-adapter'* ]]
-  GRM_STATUS_COMMAND= run "$GRM_ROOT/bin/grm-dashboard"
+  GRM_STATUS_COMMAND='' run "$GRM_ROOT/bin/grm-dashboard"
   [ "$status" -eq 0 ]
   [[ $output == *'source=command command='*'/bin/grm-status'* ]]
 }
