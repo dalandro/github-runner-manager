@@ -33,6 +33,34 @@ SCRIPT
   [[ $output == *'viewers=[]'* ]]
 }
 
+@test "dashboard keeps a status command the operator set" {
+  setup_dashboard
+  GRM_STATUS_COMMAND=/opt/status-adapter run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output == *'source=command command=/opt/status-adapter'* ]]
+  printf 'GRM_STATUS_COMMAND=/opt/configured-adapter\n' > "$BATS_TEST_TMPDIR/config.env"
+  GRM_CONFIG="$BATS_TEST_TMPDIR/config.env" run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output == *'source=command command=/opt/configured-adapter'* ]]
+  GRM_STATUS_COMMAND='' run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output == *'source=command command='*'/bin/grm-status'* ]]
+}
+
+@test "dashboard says when it runs on defaults for want of a config file" {
+  setup_dashboard
+  GRM_CONFIG="$BATS_TEST_TMPDIR/missing.env" run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output == *"no config file at $BATS_TEST_TMPDIR/missing.env"*'defaults'*'GRM_CONFIG'* ]]
+  [[ $output == *'create it from config.example.env'* ]]
+  GRM_CONFIG="$BATS_TEST_TMPDIR/missing.env" run "$GRM_ROOT/bin/grm-dashboard" --demo
+  [ "$status" -eq 0 ]
+  [[ $output != *'defaults'* ]]
+  run "$GRM_ROOT/bin/grm-dashboard"
+  [ "$status" -eq 0 ]
+  [[ $output != *'defaults'* ]]
+}
+
 @test "dashboard --allow-host adds names to those from the environment" {
   setup_dashboard
   run "$GRM_ROOT/bin/grm-dashboard" --allow-host runner-host.private.example --viewer me@example.com

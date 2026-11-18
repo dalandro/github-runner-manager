@@ -19,6 +19,9 @@ bin/grm-dashboard --port 4300 # default port is 4290 (or GRM_DASHBOARD_PORT)
 Then open <http://127.0.0.1:4290>. The first start fetches the Hex packages
 (network) and compiles; later starts take a few seconds.
 
+`GRM_STATUS_COMMAND` replaces `grm-status`: the path of one executable, run
+with `--json` (no shell, no other arguments), that prints [schema 1](status-json.md).
+
 ## Cost, and the fallback
 
 The dashboard is the one part of this toolkit that needs more than Bash: Erlang
@@ -111,6 +114,10 @@ broadcasts only when the picture differs from the previous one, ignoring the
 document's own timestamp. Pages keep a one-second clock of their own, so waits
 and hold times count up between readings without any message from the server
 side of the gates. One reading serves every open page.
+
+The "changed ... ago" badge counts from the last change to runners, slots,
+queue, lock or events. Load and memory are sampled on every reading without
+moving that time; a failed read or recovery to the same picture does not move it.
 
 **When reading fails** the last good reading stays on screen under a "stale
 data" notice that says how old it is and why reading failed; retries back off

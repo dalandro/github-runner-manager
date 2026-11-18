@@ -94,9 +94,54 @@ defmodule DashboardWeb.StatusLiveTest do
     assert has_element?(view, "#runners", "No runners configured")
     assert has_element?(view, "#slots", "No job holds units")
     assert has_element?(view, "#queue", "Nobody is waiting")
-    assert has_element?(view, "#device-lock", "never been taken")
     assert has_element?(view, "#events", "Nothing has happened yet")
-    assert has_element?(view, "#tile-lock", "Unused")
+  end
+
+  test "with no runners listed, the empty state says how to point it at a config", %{conn: conn} do
+    start_poller(stub({:ok, Fixtures.unused_status()}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#runners", "defaults")
+    assert has_element?(view, "#runners", "GRM_CONFIG")
+  end
+
+  test "a missing lock file is reported as just that", %{conn: conn} do
+    start_poller(stub({:ok, Fixtures.unused_status()}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#device-lock", "No lock file at the path in GRM_DEVICE_LOCK")
+    assert has_element?(view, "#tile-lock", "No lock file")
+    refute has_element?(view, "#device-lock", "never")
+    refute has_element?(view, "#tile-lock", "never")
+    refute has_element?(view, "#tile-lock", "Unused")
+  end
+
+  test "jobs on runners missing from GRM_RUNNERS are shown, not hidden", %{conn: conn} do
+    status =
+      Fixtures.status(fn document ->
+        document
+        |> Map.put("runners", [])
+        |> Map.put("workers", [
+          %{"pid" => 60_001, "directory" => "/srv/runners/other"},
+          %{"pid" => 60_002, "directory" => "/srv/runners/another"}
+        ])
+      end)
+
+    start_poller(stub({:ok, status}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#tile-runners", "2 jobs not matched to a runner")
+
+    assert has_element?(
+             view,
+             "#unlisted-workers",
+             "2 jobs running that no runner in GRM_RUNNERS matches"
+           )
+
+    assert has_element?(view, "#unlisted-workers", "/srv/runners/other")
+    assert has_element?(view, "#worker-60002", "pid 60002")
+    # With no runners listed the tools may be on defaults; say how to point them at a config.
+    assert has_element?(view, "#runners", "GRM_CONFIG")
   end
 
   test "a stale device lock is called out with the process holding it", %{conn: conn} do

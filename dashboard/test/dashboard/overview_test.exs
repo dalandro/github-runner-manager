@@ -47,6 +47,20 @@ defmodule Dashboard.OverviewTest do
     end
   end
 
+  describe "unlisted_workers/1" do
+    test "are the busy workers no configured runner claims" do
+      status =
+        Fixtures.status(fn document ->
+          Map.update!(document, "workers", fn workers ->
+            workers ++ [%{"pid" => 60_001, "directory" => "/srv/runners/other"}]
+          end)
+        end)
+
+      assert [%{pid: 60_001, directory: "/srv/runners/other"}] = Overview.unlisted_workers(status)
+      assert Overview.unlisted_workers(Fixtures.status()) == []
+    end
+  end
+
   describe "utilisation/1" do
     test "reports used, free and percent" do
       assert Overview.utilisation(%Slots{capacity: 6, used: 5, max_wait_seconds: 1, records: []}) ==

@@ -9,7 +9,7 @@ defmodule Dashboard.Overview do
   """
 
   alias Dashboard.Status
-  alias Dashboard.Status.{DeviceLock, Host, Runner, SlotRecord, Slots}
+  alias Dashboard.Status.{DeviceLock, Host, Runner, SlotRecord, Slots, Worker}
 
   @type activity :: :running | :queued | :parked | :idle | :down
 
@@ -48,6 +48,13 @@ defmodule Dashboard.Overview do
   def runner_counts(%Status{} = status) do
     counts = status |> runners() |> Enum.frequencies_by(& &1.activity)
     Map.merge(%{running: 0, queued: 0, parked: 0, idle: 0, down: 0}, counts)
+  end
+
+  @doc "Busy workers no configured runner claims, in document order."
+  @spec unlisted_workers(Status.t()) :: [Worker.t()]
+  def unlisted_workers(%Status{runners: runners, workers: workers}) do
+    listed = MapSet.new(runners, & &1.worker_pid)
+    Enum.reject(workers, &MapSet.member?(listed, &1.pid))
   end
 
   @doc """
@@ -127,7 +134,7 @@ defmodule Dashboard.Overview do
   @doc """
   The device lock in one word.
 
-    * `:absent` - never used on this host
+    * `:absent` - no file at the configured lock path
     * `:free` - nobody holds it
     * `:held` - held by a live wrapper, nothing suspicious
     * `:orphaned` - held, but no live wrapper claims it; the watchdog will call

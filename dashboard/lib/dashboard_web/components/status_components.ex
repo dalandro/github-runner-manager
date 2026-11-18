@@ -53,7 +53,11 @@ defmodule DashboardWeb.StatusComponents do
 
   defp freshness(%{snapshot: %Snapshot{error: nil}} = assigns) do
     ~H"""
-    <span class="badge badge-ok" id="freshness" title="Time since the picture last changed">
+    <span
+      class="badge badge-ok"
+      id="freshness"
+      title="Time since runners, slots, queue, lock or events last changed. Load and memory are sampled on every reading."
+    >
       <.icon name={:ok} /> Live
       <span class="badge-detail">
         changed {Overview.format_duration(Overview.elapsed(@snapshot.changed_at, @now))} ago
@@ -127,6 +131,7 @@ defmodule DashboardWeb.StatusComponents do
     assigns =
       assigns
       |> assign(:counts, Overview.runner_counts(assigns.status))
+      |> assign(:unlisted, length(Overview.unlisted_workers(assigns.status)))
       |> assign(:pool, Overview.utilisation(assigns.status.slots))
       |> assign(:waiting, length(Overview.queue(assigns.status.slots)))
       |> assign(:longest, Overview.longest_wait(assigns.status.slots, assigns.now))
@@ -141,6 +146,9 @@ defmodule DashboardWeb.StatusComponents do
         </:value>
         <:detail>
           {@counts.idle} idle<span :if={@counts.down > 0}> · {@counts.down} down</span>
+          <span :if={@unlisted > 0}>
+            · {@unlisted} {plural(@unlisted, "job")} not matched to a runner
+          </span>
         </:detail>
       </.tile>
 
@@ -206,7 +214,7 @@ defmodule DashboardWeb.StatusComponents do
   defp pool_words(%{free: 0}), do: "full"
   defp pool_words(%{free: free}), do: "#{free} free"
 
-  defp lock_word(:absent), do: "Unused"
+  defp lock_word(:absent), do: "No lock file"
   defp lock_word(:free), do: "Free"
   defp lock_word(:held), do: "Held"
   defp lock_word(:orphaned), do: "Unclaimed"
@@ -224,7 +232,7 @@ defmodule DashboardWeb.StatusComponents do
 
   defp lock_summary(_lock, :orphaned, _now), do: "held, no live wrapper"
   defp lock_summary(_lock, :free, _now), do: "nobody has the device"
-  defp lock_summary(_lock, :absent, _now), do: "never taken on this host"
+  defp lock_summary(_lock, :absent, _now), do: "none at GRM_DEVICE_LOCK"
 
   ## Runners
 
@@ -235,6 +243,7 @@ defmodule DashboardWeb.StatusComponents do
     assigns =
       assigns
       |> assign(:rows, Overview.runners(assigns.status))
+      |> assign(:unlisted, Overview.unlisted_workers(assigns.status))
       |> assign(:device_repository, device_repository(assigns.status.device_lock))
 
     ~H"""
@@ -244,7 +253,11 @@ defmodule DashboardWeb.StatusComponents do
         <p class="muted">{length(@rows)} configured</p>
       </header>
       <p :if={@rows == []} class="empty">
-        No runners configured. List them in <code>GRM_RUNNERS</code>
+        No runners configured in <code>GRM_RUNNERS</code>.
+        With no config file, every setting uses defaults. Point <code>GRM_CONFIG</code>
+        at one (or copy <code>config.example.env</code>
+        to <code>config.env</code>),
+        then list runners in <code>GRM_RUNNERS</code>
         and install their units with <code>grm-install-runner</code>.
       </p>
       <ul :if={@rows != []} class="rows">
@@ -269,6 +282,23 @@ defmodule DashboardWeb.StatusComponents do
           </div>
         </li>
       </ul>
+      <div :if={@unlisted != []} id="unlisted-workers">
+        <p>
+          {length(@unlisted)} {plural(length(@unlisted), "job")} running that no runner in
+          <code>GRM_RUNNERS</code>
+          matches.
+        </p>
+        <ul class="rows">
+          <li :for={worker <- @unlisted} class="row" id={"worker-#{worker.pid}"}>
+            <div class="row-main">
+              <p class="row-title">{worker.directory}</p>
+            </div>
+            <div class="row-side">
+              <p class="muted">pid {worker.pid}</p>
+            </div>
+          </li>
+        </ul>
+      </div>
     </section>
     """
   end
@@ -450,7 +480,7 @@ defmodule DashboardWeb.StatusComponents do
       </header>
 
       <p :if={@condition == :absent} class="empty">
-        The device lock has never been taken on this host.
+        No lock file at the path in <code>GRM_DEVICE_LOCK</code>.
       </p>
       <p :if={@condition == :free} class="empty">Nobody has the device.</p>
 

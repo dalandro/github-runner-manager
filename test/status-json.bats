@@ -81,6 +81,27 @@ fake_proc() {
   [ "$(json '[r["worker_pid"] for r in document["runners"]]')" = "[$worker, None]" ]
 }
 
+@test "json status lists every busy worker, on a configured runner or not" {
+  stub_systemctl; write_config
+  export GRM_WORKER_COMM=Fake.Worker
+  mkfifo "$BATS_TEST_TMPDIR/idle"
+  mkdir -p "$GRM_RUNNERS_DIR/repo-a" "$BATS_TEST_TMPDIR/elsewhere/other-runner"
+  listed=$(readlink -f "$GRM_RUNNERS_DIR/repo-a")
+  unlisted=$(readlink -f "$BATS_TEST_TMPDIR/elsewhere/other-runner")
+  for directory in "$listed" "$unlisted"; do
+    mkdir -p "$directory/bin"
+    cp "$(command -v bash)" "$directory/bin/Fake.Worker"
+    "$directory/bin/Fake.Worker" -c 'exec 3<> "$1"; read -r -u 3 _' _ "$BATS_TEST_TMPDIR/idle" &
+    processes+=("$!")
+    wait_for grep -qx Fake.Worker "/proc/$!/comm"
+  done
+  run "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 0 ]
+  [ "$(json 'sorted((w["directory"], w["pid"]) for w in document["workers"])')" = \
+    "[('$unlisted', ${processes[1]}), ('$listed', ${processes[0]})]" ]
+  [ "$(json '[r["worker_pid"] for r in document["runners"]]')" = "[${processes[0]}, None]" ]
+}
+
 @test "json status lists slot records with kind, units, label and since, without writing" {
   export GRM_SYSTEMCTL=true
   start_holder; first=$holder
@@ -157,6 +178,13 @@ fake_proc() {
   GITHUB_REPOSITORY=org/repo-a "$GRM_ROOT/bin/with-device-lock" -- sleep 300 > /dev/null 2>&1 &
   wrapper=$!; processes+=("$wrapper")
   wait_for test -s "$GRM_DEVICE_LOCK.holder"
+  export GRM_WORKER_COMM=Fake.Worker
+  mkdir -p "$GRM_RUNNERS_DIR/repo-a/bin"
+  cp "$(command -v bash)" "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker"
+  mkfifo "$BATS_TEST_TMPDIR/idle"
+  "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker" -c 'exec 3<> "$1"; read -r -u 3 _' _ "$BATS_TEST_TMPDIR/idle" &
+  processes+=("$!")
+  wait_for grep -qx Fake.Worker "/proc/$!/comm"
   bash -c 'exec 17>"$1"; sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$2"' _ "$GRM_DEVICE_LOCK" "$BATS_TEST_TMPDIR/leaked"
   processes+=("$(<"$BATS_TEST_TMPDIR/leaked")")
   "$GRM_ROOT/bin/grm-status" --json | key_paths > "$BATS_TEST_TMPDIR/real"

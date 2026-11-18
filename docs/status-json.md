@@ -21,6 +21,9 @@ process, whatever the watchdog's kill setting.
     {"name": "web-app", "repository": "org/web-app", "units": 2, "labels": "self-hosted,linux",
      "unit": "grm-runner-web-app.service", "unit_state": "active", "worker_pid": 52877}
   ],
+  "workers": [
+    {"pid": 52877, "directory": "/srv/runners/web-app"}
+  ],
   "slots": {
     "capacity": 6, "used": 5, "max_wait_seconds": 2700,
     "records": [
@@ -47,8 +50,9 @@ process, whatever the watchdog's kill setting.
 | `generated_at` | Epoch seconds when the document was produced. All other times are epoch seconds too. |
 | `host.load_1m`, `host.memory_available_mb` | Current readings; `null` when unavailable. `max_load` and `min_memory_mb` are the `wait-for-load` thresholds: the gate passes when load is below the first and memory at or above the second. |
 | `runners[]` | One entry per `GRM_RUNNERS` line, in configuration order. `unit_state` is the first word `systemctl is-active` prints (`active`, `inactive`, `failed`, ...) or `unknown`. `worker_pid` is the job worker process whose executable lives in that runner's directory, or `null` when the runner is idle. |
+| `workers[]` | Every busy job worker owned by the current user, including runners outside `GRM_RUNNERS`. `pid` is its process id; `directory` is the executable path with its last two components removed (`/srv/runners/web-app/bin/Runner.Worker` becomes `/srv/runners/web-app`, also for `bin.<version>`). Older producers may omit this array; readers treat it as empty. |
 | `slots.records[]` | Live records after in-memory reaping, in state-file order. `kind` is `holding`, `queued` or `parked`; queue order is ascending `ticket`. `holder_pid` equals a runner's `worker_pid` when the job came through the runner hooks. `since` is the last transition (`null` for records older than the field). `unparking` is true while a parked job is actively asking for its units back. |
-| `device_lock.state` | `absent` (never used), `free` or `held`, from the lock's flock holders. |
+| `device_lock.state` | `absent` (no file at the configured lock path), `free` or `held`, from the lock's flock holders. |
 | `device_lock.holder` | The wrapper's holder file, or `null`. `alive` says whether that wrapper process still exists; a `held` lock without a live holder is a leaked descriptor. |
 | `device_lock.watchdog.stale[]` | What `stale-lock-watchdog` would report now: flock holders other than the live wrapper, older than `min_age_seconds`. `kill` reports the configured mode only. |
 | `events[]` | The newest 50 lines of the [event log](events.md), oldest first. |
