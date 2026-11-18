@@ -112,6 +112,10 @@ document's own timestamp. Pages keep a one-second clock of their own, so waits
 and hold times count up between readings without any message from the server
 side of the gates. One reading serves every open page.
 
+The "changed ... ago" badge counts from the last change to runners, slots,
+queue, lock or events. Load and memory are sampled on every reading without
+moving that time; a failed read or recovery to the same picture does not move it.
+
 **When reading fails** the last good reading stays on screen under a "stale
 data" notice that says how old it is and why reading failed; retries back off
 exponentially to 30 seconds and return to the normal interval on the first

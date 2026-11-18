@@ -47,9 +47,26 @@ defmodule Dashboard.Snapshot do
   @spec changed?(t(), t()) :: boolean()
   def changed?(%__MODULE__{} = old, %__MODULE__{} = new), do: comparable(old) != comparable(new)
 
+  @doc """
+  Whether the runner, slot, queue, lock or event picture changed. Load and
+  memory are sampled on every reading; failures and read times do not count.
+  """
+  @spec state_changed?(t(), t()) :: boolean()
+  def state_changed?(%__MODULE__{status: old}, %__MODULE__{status: new}),
+    do: state(old) != state(new)
+
   @doc "Marks `now` as the moment the picture last changed."
   @spec mark_changed(t(), non_neg_integer()) :: t()
   def mark_changed(%__MODULE__{} = snapshot, now), do: %{snapshot | changed_at: now}
+
+  defp state(nil), do: nil
+
+  defp state(%Status{} = status),
+    do: %{
+      status
+      | generated_at: nil,
+        host: %{status.host | load_1m: nil, memory_available_mb: nil}
+    }
 
   defp comparable(%__MODULE__{status: status} = snapshot) do
     %{

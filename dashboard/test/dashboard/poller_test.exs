@@ -47,6 +47,16 @@ defmodule Dashboard.PollerTest do
     assert_receive {:snapshot, %Snapshot{status: ^busier}}
   end
 
+  test "publishes new load and memory readings without moving the change time", context do
+    status = Fixtures.status()
+    sampled = %{status | host: %{status.host | load_1m: 5.02, memory_available_mb: 5_190}}
+    # Over a second apart, so a moved change time would show in epoch seconds.
+    start_poller(context, [{:ok, status}, {:ok, sampled}], interval: 1_100)
+
+    assert_receive {:snapshot, %Snapshot{status: ^status, changed_at: changed_at}}
+    assert_receive {:snapshot, %Snapshot{status: ^sampled, changed_at: ^changed_at}}, 2_000
+  end
+
   test "a failed read keeps the last reading, marks it stale, and recovers", context do
     status = Fixtures.status()
     start_poller(context, [{:ok, status}, {:error, :timeout}, {:ok, status}])

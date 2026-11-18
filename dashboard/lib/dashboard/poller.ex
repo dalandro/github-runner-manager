@@ -11,6 +11,8 @@ defmodule Dashboard.Poller do
 
   A new `Dashboard.Snapshot` is broadcast as `{:snapshot, snapshot}` only when
   it differs from the previous one (see `Dashboard.Snapshot.changed?/2`).
+  The change time tracks runners, slots, queue, lock and events; load and
+  memory are sampled on every reading (see `Dashboard.Snapshot.state_changed?/2`).
 
   After a failed read the next attempt waits `interval * 2^failures`, capped at
   `:max_backoff`; one good read returns to `:interval`.
@@ -122,15 +124,17 @@ defmodule Dashboard.Poller do
           {Snapshot.fail(state.snapshot, error, now), state.failures + 1}
       end
 
-    # Every page, whenever it was opened, shows the same "changed ... ago".
+    # Every page shares the state change time; load and memory still update.
     snapshot =
-      if Snapshot.changed?(state.snapshot, snapshot) do
-        snapshot = Snapshot.mark_changed(snapshot, now)
-        Phoenix.PubSub.broadcast(state.pubsub, state.topic, {:snapshot, snapshot})
-        snapshot
+      if Snapshot.state_changed?(state.snapshot, snapshot) do
+        Snapshot.mark_changed(snapshot, now)
       else
         snapshot
       end
+
+    if Snapshot.changed?(state.snapshot, snapshot) do
+      Phoenix.PubSub.broadcast(state.pubsub, state.topic, {:snapshot, snapshot})
+    end
 
     Process.send_after(self(), :poll, delay(state.interval, state.max_backoff, failures))
     %{state | snapshot: snapshot, failures: failures, task: nil}

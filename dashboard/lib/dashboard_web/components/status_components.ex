@@ -53,7 +53,11 @@ defmodule DashboardWeb.StatusComponents do
 
   defp freshness(%{snapshot: %Snapshot{error: nil}} = assigns) do
     ~H"""
-    <span class="badge badge-ok" id="freshness" title="Time since the picture last changed">
+    <span
+      class="badge badge-ok"
+      id="freshness"
+      title="Time since runners, slots, queue, lock or events last changed. Load and memory are sampled on every reading."
+    >
       <.icon name={:ok} /> Live
       <span class="badge-detail">
         changed {Overview.format_duration(Overview.elapsed(@snapshot.changed_at, @now))} ago
