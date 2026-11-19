@@ -141,6 +141,8 @@ SCRIPT
   grep -qx 'Content-Type: application/json' "$BATS_TEST_TMPDIR/curl-argv"
   grep -qx -- 'https://relay.example.com/ingest' "$BATS_TEST_TMPDIR/curl-argv"
   grep -qF '"name": "runner-1"' "$BATS_TEST_TMPDIR/curl-body"
+  # The document exactly, no newline added: the relay's 128 KB cap is exact.
+  [ "$(tail -c 1 "$BATS_TEST_TMPDIR/curl-body")" = '}' ]
   run grep -cF mobile-app "$BATS_TEST_TMPDIR/curl-body"
   [ "$output" = 0 ]
 }

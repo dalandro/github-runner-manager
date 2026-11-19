@@ -43,7 +43,7 @@ push() {
     --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
     --header 'Content-Type: application/json' --data-binary @- \
     --max-filesize 4096 --output "$work/reply" --write-out '%{http_code}' \
-    -- "$GRM_RELAY_URL" <<< "$document") || { reason="curl exit $?"; return 1; }
+    -- "$GRM_RELAY_URL" < <(printf '%s' "$document")) || { reason="curl exit $?"; return 1; }
   if [[ $code != 200 ]]; then reason="HTTP $code"; return 1; fi
   interval=$(relay_next_interval "$(head -c 4096 "$work/reply")")
 }
