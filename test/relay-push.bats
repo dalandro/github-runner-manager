@@ -32,7 +32,7 @@ while (($#)); do
   shift
 done
 cat > "$stub/curl-body"
-# Rotates the token after the first push, as an operator would.
+# Rewrites the token file on every push, as an operator rotating it would.
 if [[ -n ${STUB_ROTATE_TO:-} ]]; then printf '%s\n' "$STUB_ROTATE_TO" > "$GRM_RELAY_TOKEN_FILE"; STUB_ROTATE_TO=; fi
 code=$(head -n 1 "$stub/codes")
 if (($(wc -l < "$stub/codes") > 1)); then sed -i 1d "$stub/codes"; fi
@@ -63,7 +63,8 @@ SCRIPT
   [ "$(in_relay relay_url_protocol http://127.0.0.1:4391/ingest)" = http ]
   [ "$(in_relay relay_url_protocol 'http://[::1]:4391/ingest')" = http ]
   for url in '' http://relay.example.com/ingest http://127.0.0.1.example.com/ingest \
-    ftp://relay.example.com 'https://relay.example.com/in gest' https://user@relay.example.com/ingest; do
+    ftp://relay.example.com 'https://relay.example.com/in gest' https://user@relay.example.com/ingest \
+    http://127.0.0.1@relay.example.com/ingest 'http://[::1%25lo]/ingest' 'http://[::1]@relay.example.com/'; do
     run in_relay relay_url_protocol "$url"
     [ "$status" -ne 0 ] || { echo "accepted $url"; return 1; }
   done
