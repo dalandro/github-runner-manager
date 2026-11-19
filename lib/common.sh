@@ -38,6 +38,8 @@ load_config() {
   : "${GRM_SYSTEMD_USER_DIR:=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
   : "${GRM_SYSTEMCTL:=systemctl --user}" "${GRM_PROC:=/proc}"
   : "${GRM_EVENTS_MAX:=500}" "${GRM_UMASK:=077}" "${GRM_LOCK_WAIT:=30}"
+  : "${GRM_RELAY_URL:=}" "${GRM_RELAY_SHARE_DETAILS:=0}"
+  : "${GRM_RELAY_TOKEN_FILE:=${XDG_CONFIG_HOME:-$HOME/.config}/grm/relay-token}"
 }
 load_config
 

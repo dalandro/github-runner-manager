@@ -2,16 +2,21 @@
 set -euo pipefail
 # shellcheck source=lib/common.sh
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+# shellcheck source=lib/public.sh
+source "$GRM_ROOT/lib/public.sh"
 # Read-only overview. --json is the versioned seam for other views (see
-# docs/status-json.md); --watch repeats the text view in the terminal.
-mode=text interval=2
+# docs/status-json.md); --public filters it for a copy that leaves this
+# machine (lib/public.sh); --watch repeats the text view in the terminal.
+mode=text interval=2 public_output=0
 case ${1:-} in
-  --json) mode=json; shift;;
+  --json)
+    mode=json; shift
+    if [[ ${1:-} == --public ]]; then public_output=1; shift; fi;;
   --watch)
     mode=watch; shift
     if (($#)); then interval=$1; shift; fi;;
 esac
-(($# == 0)) || usage_error 'usage: grm-status [--json | --watch [seconds]]'
+(($# == 0)) || usage_error 'usage: grm-status [--json [--public] | --watch [seconds]]'
 if ! is_number "$interval" || [[ $interval =~ ^[0.]+$ ]]; then usage_error 'grm-status: invalid watch interval'; fi
 lock=$(readlink -m "$GRM_DEVICE_LOCK")
 
@@ -90,9 +95,17 @@ render_runners() {
     state=$(systemctl_user is-active "$unit" 2>/dev/null) || true
     state=${state%%$'\n'*}
     worker=$(find_runner_worker "$(readlink -f "$GRM_RUNNERS_DIR/$name" 2>/dev/null || printf 'missing')" "$workers")
+    labels=${labels:-} state=${state:-unknown}
+    public_field name runners.name public_runner_alias
+    public_field repository runners.repository public_repository_alias
+    public_field units runners.units
+    public_field labels runners.labels
+    public_field unit runners.unit public_unit_alias
+    public_field state runners.unit_state
+    public_field worker runners.worker_pid
     printf '%s\n    {"name": %s, "repository": %s, "units": %s, "labels": %s, "unit": %s, "unit_state": %s, "worker_pid": %s}' \
       "$separator" "$(json_string "$name")" "$(json_string "$repository")" "$(json_number "$units")" \
-      "$(json_string "${labels:-}")" "$(json_string "$unit")" "$(json_string "${state:-unknown}")" "$(json_number "$worker")"
+      "$(json_string "$labels")" "$(json_string "$unit")" "$(json_string "$state")" "$(json_number "$worker")"
     separator=,
   done
 }
@@ -104,6 +117,8 @@ render_workers() {
     # Updated runners use bin.<version>, so strip components, not a bin name.
     directory=${executable%/*}
     directory=${directory%/*}
+    public_field process workers.pid
+    public_field directory workers.directory public_directory_alias
     printf '%s\n    {"pid": %s, "directory": %s}' \
       "$separator" "$(json_number "$process")" "$(json_string "$directory")"
     separator=,
@@ -141,6 +156,15 @@ render_job() {
       esac
     done
   fi
+  for key in repository workflow job run_id run_attempt ref head_ref sha event actor runner server_url pull_request pull_request_title queued_at; do
+    value=${fields[$key]:-}
+    case $key in
+      repository) public_field value slots.records.job.repository public_repository_alias;;
+      runner) public_field value slots.records.job.runner public_runner_alias;;
+      *) public_field value "slots.records.job.$key";;
+    esac
+    fields[$key]=$value
+  done
   printf '{"repository": %s, "workflow": %s, "job": %s, "run_id": %s, "run_attempt": %s, "ref": %s, "head_ref": %s, "sha": %s, "event": %s, "actor": %s, "runner": %s, "server_url": %s, "pull_request": %s, "pull_request_title": %s, "queued_at": %s}' \
     "$(json_optional_string "${fields[repository]:-}")" "$(json_optional_string "${fields[workflow]:-}")" \
     "$(json_optional_string "${fields[job]:-}")" "$(json_optional_string "${fields[run_id]:-}")" \
@@ -154,6 +178,7 @@ render_job() {
 
 render_slots() {
   local kind ticket process start waiter waiter_start weight name since unparking used=0 separator='' rows='' raw
+  local job capacity=$GRM_SLOTS_CAPACITY max_wait=$GRM_SLOTS_MAX_WAIT
   # A failure (such as a lock that stays held) must not read as an empty gate.
   raw=$("$GRM_ROOT/bin/job-slots" status --raw) || return
   while read -r kind ticket process start waiter waiter_start weight name since; do
@@ -165,38 +190,62 @@ render_slots() {
     unparking=false
     if [[ $kind == parked ]] && is_alive "$waiter" "$waiter_start"; then unparking=true; fi
     if [[ ${since:-0} == 0 ]]; then since=null; fi
+    job=$(render_job "$process" "$start") || exit
+    public_field kind slots.records.kind
+    public_field ticket slots.records.ticket
+    public_field process slots.records.holder_pid
+    public_field weight slots.records.units
+    public_field name slots.records.label public_repository_alias
+    public_field since slots.records.since
+    public_field unparking slots.records.unparking
     rows+=$(printf '%s\n      {"kind": %s, "ticket": %s, "holder_pid": %s, "units": %s, "label": %s, "since": %s, "unparking": %s,\n       "job": %s}' \
       "$separator" "$(json_string "$kind")" "$(json_number "$ticket")" "$(json_number "$process")" \
-      "$(json_number "$weight")" "$(json_string "$name")" "$(json_number "$since")" "$unparking" \
-      "$(render_job "$process" "$start")")
+      "$(json_number "$weight")" "$(json_string "$name")" "$(json_number "$since")" "$unparking" "$job")
     separator=,
   done <<< "$raw"
+  public_field capacity slots.capacity
+  public_field used slots.used
+  public_field max_wait slots.max_wait_seconds
   printf '{\n    "capacity": %s, "used": %s, "max_wait_seconds": %s,\n    "records": [%s\n    ]\n  }' \
-    "$(json_number "$GRM_SLOTS_CAPACITY")" "$used" "$(json_number "$GRM_SLOTS_MAX_WAIT")" "$rows"
+    "$(json_number "$capacity")" "$used" "$(json_number "$max_wait")" "$rows"
 }
 
 render_device_lock() {
   local recorded repository run job process start since alive holder=null legitimate=0 kill=false
-  local stale_process number age comm separator='' stale='' stale_end=''
+  local stale_process number age comm separator='' stale='' stale_end='' state min_age=$GRM_WATCHDOG_MIN_AGE
   if [[ -r $lock.holder ]]; then
     IFS= read -r recorded < "$lock.holder" || true
     read -r repository run job process start since _ <<< "$recorded"
     alive=false
     if is_alive "$process" "$start"; then alive=true; legitimate=$process; fi
+    public_field repository device_lock.holder.repository public_repository_alias
+    public_field run device_lock.holder.run_id
+    public_field job device_lock.holder.job
+    public_field process device_lock.holder.pid
+    public_field since device_lock.holder.since
+    public_field alive device_lock.holder.alive
     holder=$(printf '{"repository": %s, "run_id": %s, "job": %s, "pid": %s, "since": %s, "alive": %s}' \
       "$(json_string "$repository")" "$(json_string "$run")" "$(json_string "$job")" \
       "$(json_number "$process")" "$(json_number "$since")" "$alive")
   fi
   if [[ -e $lock ]] && is_uint "$GRM_WATCHDOG_MIN_AGE"; then
     while read -r stale_process number age _ comm; do
+      public_field stale_process device_lock.watchdog.stale.pid
+      public_field number device_lock.watchdog.stale.fd
+      public_field age device_lock.watchdog.stale.age_seconds
+      public_field comm device_lock.watchdog.stale.command
       stale+=$(printf '%s\n      {"pid": %s, "fd": %s, "age_seconds": %s, "command": %s}' \
         "$separator" "$stale_process" "$number" "$age" "$(json_string "$comm")")
       separator=, stale_end=$'\n    '
     done < <(find_stale_lock_holders "$lock" "$GRM_WATCHDOG_MIN_AGE" "$legitimate")
   fi
   if [[ $GRM_WATCHDOG_KILL == 1 ]]; then kill=true; fi
+  state=$(get_lock_state)
+  public_field state device_lock.state
+  public_field min_age device_lock.watchdog.min_age_seconds
+  public_field kill device_lock.watchdog.kill
   printf '{\n    "state": "%s",\n    "holder": %s,\n    "watchdog": {"min_age_seconds": %s, "kill": %s, "stale": [%s%s]}\n  }' \
-    "$(get_lock_state)" "$holder" "$(json_number "$GRM_WATCHDOG_MIN_AGE")" "$kill" "$stale" "$stale_end"
+    "$state" "$holder" "$(json_number "$min_age")" "$kill" "$stale" "$stale_end"
 }
 
 render_events() {
@@ -207,6 +256,10 @@ render_events() {
   flock -s -w 1 "$events_fd" || return 0
   while read -r at kind subject detail; do
     [[ $at =~ ^[0-9]+$ ]] || continue
+    public_field at events.at
+    public_field subject events.subject public_subject "$kind"
+    public_field detail events.detail public_detail
+    public_field kind events.kind
     printf '%s\n    {"at": %s, "kind": %s, "subject": %s, "detail": %s}' \
       "$separator" "$at" "$(json_string "$kind")" "$(json_string "$subject")" "$(json_string "$detail")"
     separator=,
@@ -215,21 +268,35 @@ render_events() {
 }
 
 render_json() {
-  local metrics load=null available=null slots workers
+  local metrics load=null available=null slots workers runners worker_rows device_lock events
+  local schema=1 generated_at cpus max_load=$GRM_MAX_LOAD min_memory=$GRM_MIN_MEM_MB
   slots=$(render_slots) || exit
   # One scan for both lists, so a job starting or ending between two scans
   # cannot show as a worker no runner claims.
   workers=$(find_workers)
+  # Each part is checked: in public output a field without a class stops it.
+  runners=$(render_runners "$workers") || exit
+  worker_rows=$(render_workers "$workers") || exit
+  device_lock=$(render_device_lock) || exit
+  events=$(render_events) || exit
   if metrics=$(get_load_and_memory); then read -r load available <<< "$metrics"; fi
-  printf '{\n  "schema": 1,\n  "generated_at": %s,\n' "$(date +%s)"
+  generated_at=$(date +%s) cpus=$(getconf _NPROCESSORS_ONLN)
+  public_field schema schema
+  public_field generated_at generated_at
+  public_field cpus host.cpus
+  public_field load host.load_1m
+  public_field max_load host.max_load
+  public_field available host.memory_available_mb
+  public_field min_memory host.min_memory_mb
+  printf '{\n  "schema": %s,\n  "generated_at": %s,\n' "$schema" "$generated_at"
   printf '  "host": {"cpus": %s, "load_1m": %s, "max_load": %s, "memory_available_mb": %s, "min_memory_mb": %s},\n' \
-    "$(json_number "$(getconf _NPROCESSORS_ONLN)")" "$load" "$(json_number "$GRM_MAX_LOAD")" \
-    "$available" "$(json_number "$GRM_MIN_MEM_MB")"
-  printf '  "runners": [%s\n  ],\n' "$(render_runners "$workers")"
-  printf '  "workers": [%s\n  ],\n' "$(render_workers "$workers")"
+    "$(json_number "$cpus")" "$load" "$(json_number "$max_load")" \
+    "$available" "$(json_number "$min_memory")"
+  printf '  "runners": [%s\n  ],\n' "$runners"
+  printf '  "workers": [%s\n  ],\n' "$worker_rows"
   printf '  "slots": %s,\n' "$slots"
-  printf '  "device_lock": %s,\n' "$(render_device_lock)"
-  printf '  "events": [%s\n  ]\n}\n' "$(render_events)"
+  printf '  "device_lock": %s,\n' "$device_lock"
+  printf '  "events": [%s\n  ]\n}\n' "$events"
 }
 
 case $mode in

@@ -7,6 +7,10 @@ is read-only: it creates no state, takes the slot state lock only as long as a
 read needs, never probes the device lock with flock, and never signals a
 process, whatever the watchdog's kill setting.
 
+`grm-status --json --public` prints the same document filtered for a copy
+that leaves this machine, such as a [relay push](relay-push.md); see
+[public output](#public-output).
+
 `grm-status --watch [seconds]` repeats the plain text view in the terminal
 (default every 2 seconds) for hosts where a browser view is not wanted.
 
@@ -70,3 +74,23 @@ Strings are ASCII: any other byte, and any control character, is written as
 The bundled demo document, `dashboard/priv/demo/status.json`, is checked by the
 suite to have exactly the key shape of real output, so the demo cannot drift
 from the schema.
+
+## Public output
+
+`--public` is an allow-list. Every field above has a class in
+[`lib/public.sh`](../lib/public.sh), and the document keeps its key shape and
+schema, so the dashboard reads it unchanged. A field without a class stops the
+output (exit 70), and the suite fails until a new field gets one.
+
+| Class | Fields | Sent |
+| --- | --- | --- |
+| keep | numbers, states, times, process ids, the stale holder's process name (such as `adb`), event kinds | as is |
+| alias | runner names (`runner-1`, `runner-2` in config order) and units (`runner-1.service`); repositories, slot labels, the lock holder's repository and event subjects (`repo-1`, `repo-2` in config order); a job's runner | the stand-in, or `other` for a name the config does not list |
+| share | the job details: workflow, job, run id and attempt, ref, head ref, sha, event, server URL, pull request number and title; the lock holder's run id and job | `null`, or `""` where the schema needs a string |
+| numeric | event detail | only in the numeric forms the gates write (`ticket 41, 2 units after 0s; used 5/6`), else `""` |
+| never | worker directories (the runner's alias instead), runner labels, the job's actor | never |
+
+`GRM_RELAY_SHARE_DETAILS=1` in the config is the one opt-in: alias, share and
+numeric fields are then sent as they are, so the board shows real repository
+and runner names and links to each job's run and pull request. Paths, runner
+labels and user names stay out either way.
