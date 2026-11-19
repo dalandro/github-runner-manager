@@ -224,7 +224,7 @@ field_paths() {
   full_installation
   "$GRM_ROOT/bin/grm-status" --json | field_paths > "$BATS_TEST_TMPDIR/fields"
   # A new field fails here until lib/public.sh says what --public does with it.
-  diff "$BATS_TEST_TMPDIR/fields" <(bash -c 'source "$1/lib/common.sh"; source "$1/lib/public.sh"; public_classes' _ "$GRM_ROOT" | cut -d' ' -f1 | sort)
+  diff "$BATS_TEST_TMPDIR/fields" <(bash -c 'source "$1/lib/common.sh"; source "$1/lib/public.sh"; public_classes' _ "$GRM_ROOT" | cut -d' ' -f1 | LC_ALL=C sort)
 }
 
 @test "public json has the shape of json status and names nothing on this machine" {
