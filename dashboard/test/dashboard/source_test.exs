@@ -2,7 +2,8 @@ defmodule Dashboard.SourceTest do
   use ExUnit.Case, async: true
 
   alias Dashboard.{Fixtures, Source, Status}
-  alias Dashboard.Source.{Command, Demo}
+  alias Dashboard.Relay.Inbox
+  alias Dashboard.Source.{Command, Demo, Relay}
 
   describe "Command" do
     @describetag :tmp_dir
@@ -97,6 +98,36 @@ defmodule Dashboard.SourceTest do
     end
   end
 
+  describe "Relay" do
+    setup do
+      %{status: Fixtures.status(), inbox: start_supervised!({Inbox, name: nil})}
+    end
+
+    test "waits for the first push", %{inbox: inbox} do
+      assert Relay.fetch(inbox: inbox, interval_seconds: 5, now: 1_000) ==
+               {:error, :no_push_yet}
+    end
+
+    test "serves the latest push, read when it arrived, until it is stale", context do
+      :ok = Inbox.offer(context.inbox, context.status, 1_000)
+      options = [inbox: context.inbox, interval_seconds: 5]
+
+      assert Relay.fetch([now: 1_000] ++ options) == {:ok, context.status, 1_000}
+      assert Relay.fetch([now: 1_030] ++ options) == {:ok, context.status, 1_000}
+      assert Relay.fetch([now: 1_031] ++ options) == {:error, {:no_push, 1_000}}
+    end
+
+    test "allows a slower host more time", context do
+      :ok = Inbox.offer(context.inbox, context.status, 1_000)
+
+      assert {:ok, _status, 1_000} =
+               Relay.fetch(inbox: context.inbox, interval_seconds: 60, now: 1_180)
+
+      assert {:error, {:no_push, 1_000}} =
+               Relay.fetch(inbox: context.inbox, interval_seconds: 60, now: 1_181)
+    end
+  end
+
   test "every error has a sentence for the page" do
     errors = [
       :timeout,
@@ -105,7 +136,9 @@ defmodule Dashboard.SourceTest do
       {:crashed, "x"},
       {:invalid_json, "x"},
       {:invalid_field, "capacity"},
-      {:unsupported_schema, 2}
+      {:unsupported_schema, 2},
+      :no_push_yet,
+      {:no_push, 1_000}
     ]
 
     for error <- errors do

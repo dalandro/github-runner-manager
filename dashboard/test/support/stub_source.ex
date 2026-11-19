@@ -15,6 +15,9 @@ defmodule Dashboard.StubSource do
   def demo?, do: false
 
   @impl true
+  def relay?, do: false
+
+  @impl true
   def fetch(options) do
     result =
       Agent.get_and_update(Keyword.fetch!(options, :script), fn

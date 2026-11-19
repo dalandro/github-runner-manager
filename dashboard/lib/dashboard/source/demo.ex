@@ -24,6 +24,9 @@ defmodule Dashboard.Source.Demo do
   def demo?, do: true
 
   @impl true
+  def relay?, do: false
+
+  @impl true
   def fetch(options) do
     path = Keyword.get_lazy(options, :path, &default_path/0)
     now = Keyword.get_lazy(options, :now, fn -> System.system_time(:second) end)
