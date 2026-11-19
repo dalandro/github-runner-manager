@@ -10,9 +10,9 @@ defmodule DashboardWeb.StatusComponents do
 
   use Phoenix.Component
 
-  alias Dashboard.{Overview, Snapshot, Source}
+  alias Dashboard.{JobDetails, Overview, Snapshot, Source}
   alias Dashboard.Status
-  alias Dashboard.Status.{DeviceLock, Host, Slots}
+  alias Dashboard.Status.{DeviceLock, Host, SlotRecord, Slots}
 
   @events_shown 20
 
@@ -288,7 +288,10 @@ defmodule DashboardWeb.StatusComponents do
       <ul :if={@rows != []} class="rows">
         <li :for={row <- @rows} class="row" id={"runner-#{row.runner.name}"}>
           <div class="row-main">
-            <p class="row-title">{row.runner.name}</p>
+            <p class="row-title">
+              <.job_link :if={row.record} record={row.record}>{row.runner.name}</.job_link>
+              <span :if={!row.record}>{row.runner.name}</span>
+            </p>
             <p class="muted">{row.runner.repository}</p>
           </div>
           <div class="row-side">
@@ -403,7 +406,7 @@ defmodule DashboardWeb.StatusComponents do
           <div class="row-main">
             <p class="row-title">
               <span class={["swatch", "cell-#{holder_style(index)}"]}></span>
-              {record.label}
+              <.job_link record={record}>{record.label}</.job_link>
             </p>
           </div>
           <div class="row-side">
@@ -418,7 +421,7 @@ defmodule DashboardWeb.StatusComponents do
         <ul class="rows rows-tight">
           <li :for={record <- @parked} class="row">
             <div class="row-main">
-              <p class="row-title">{record.label}</p>
+              <p class="row-title"><.job_link record={record}>{record.label}</.job_link></p>
               <p class="muted">gave back {units(record.units)} while it waits for the device</p>
             </div>
             <div class="row-side">
@@ -471,7 +474,7 @@ defmodule DashboardWeb.StatusComponents do
         <li :for={{record, index} <- Enum.with_index(@queue, 1)} class="row">
           <span class="position" aria-hidden="true">{index}</span>
           <div class="row-main">
-            <p class="row-title">{record.label}</p>
+            <p class="row-title"><.job_link record={record}>{record.label}</.job_link></p>
             <p class="muted">
               needs {units(record.units)} · ticket {record.ticket}
               <span :if={record.kind == :parked} class="chip">back from the device</span>
@@ -488,6 +491,188 @@ defmodule DashboardWeb.StatusComponents do
     </section>
     """
   end
+
+  ## Job details
+
+  attr :record, SlotRecord, required: true
+  slot :inner_block, required: true
+
+  # Opens the job's detail view with the browser's own popover: no event
+  # reaches the server and no script of ours runs. The row is the target: the
+  # button's ::after covers it, so a tap anywhere on the row opens the view.
+  defp job_link(assigns) do
+    ~H"""
+    <button type="button" class="job-link" popovertarget={"job-#{@record.ticket}"}>
+      {render_slot(@inner_block)}<span class="visually-hidden">, job details</span>
+    </button>
+    """
+  end
+
+  attr :record, SlotRecord, required: true
+  attr :status, Status, required: true
+  attr :now, :integer, required: true
+
+  @doc """
+  One job's detail view, a drawer at the side (a sheet from the bottom on a
+  phone) that the job's rows open. Everything comes from the status reading;
+  links lead to the job's GitHub server and nothing here acts on the job.
+  """
+  def job_details(assigns) do
+    record = assigns.record
+
+    assigns =
+      assigns
+      |> assign(:id, "job-#{record.ticket}")
+      |> assign(:details, JobDetails.describe(record))
+      |> assign(:times, JobDetails.times(record, assigns.now))
+      |> assign(:activity, Overview.job_activity(record))
+      |> assign(:position, Overview.queue_position(assigns.status.slots, record))
+      |> assign(:runner, Overview.runner_for(assigns.status, record))
+      |> assign(:device_repository, device_repository(assigns.status.device_lock))
+
+    ~H"""
+    <section
+      id={@id}
+      class="drawer"
+      popover
+      role="dialog"
+      aria-labelledby={"#{@id}-title"}
+    >
+      <header class="drawer-header">
+        <div class="drawer-heading">
+          <p class="muted">Job · ticket {@record.ticket}</p>
+          <h2 id={"#{@id}-title"}>{@details.repository || @record.label}</h2>
+          <p class={["state", "state-#{@activity}"]}>
+            <.icon name={activity_icon(@activity)} /> {activity_word(@activity)}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="drawer-close"
+          popovertarget={@id}
+          popovertargetaction="hide"
+        >
+          Close
+        </button>
+      </header>
+
+      <dl class="facts drawer-facts">
+        <div>
+          <dt>Workflow</dt>
+          <dd>{known(@details.workflow)}</dd>
+        </div>
+        <div>
+          <dt>Job</dt>
+          <dd>{known(@details.job)}</dd>
+        </div>
+        <div>
+          <dt>Run</dt>
+          <dd>
+            <.maybe_link href={@details.run_url}>{known(@details.run_id)}</.maybe_link>
+            <span :if={@details.run_attempt && @details.run_attempt > 1} class="muted">
+              · attempt {@details.run_attempt}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Pull request</dt>
+          <dd>
+            <%= case @details.pull_request do %>
+              <% :none -> %>
+                <span class="muted">none: {@details.event} run</span>
+              <% nil -> %>
+                {known(nil)}
+              <% number -> %>
+                <.maybe_link href={@details.pull_request_url}>#{number}</.maybe_link>
+                <span :if={@details.pull_request_title} class="drawer-title">
+                  {@details.pull_request_title}
+                </span>
+            <% end %>
+          </dd>
+        </div>
+        <div>
+          <dt>Branch</dt>
+          <dd>{known(@details.branch)}</dd>
+        </div>
+        <div>
+          <dt>Commit</dt>
+          <dd class="mono">
+            <.maybe_link href={@details.commit_url}>{known(@details.short_sha)}</.maybe_link>
+          </dd>
+        </div>
+        <div>
+          <dt>Event</dt>
+          <dd>{known(@details.event)}</dd>
+        </div>
+        <div>
+          <dt>Actor</dt>
+          <dd>{known(@details.actor)}</dd>
+        </div>
+        <div>
+          <dt>Runner</dt>
+          <dd>{known(if(@runner, do: @runner.name, else: @details.runner))}</dd>
+        </div>
+        <div :if={@activity != :running}>
+          <dt>Waiting on</dt>
+          <dd>{waiting_words(@record, @position, @device_repository)}</dd>
+        </div>
+        <div>
+          <dt>Units</dt>
+          <dd>{units(@record.units)}</dd>
+        </div>
+        <div>
+          <dt>Queued</dt>
+          <dd>{ago(@times.queued_at, @now)}</dd>
+        </div>
+        <div>
+          <dt>Started</dt>
+          <dd>
+            {if @record.kind == :queued, do: "not yet", else: ago(@times.started_at, @now)}
+          </dd>
+        </div>
+        <div>
+          <dt>On the host for</dt>
+          <dd>{known(@times.elapsed && Overview.format_duration(@times.elapsed))}</dd>
+        </div>
+      </dl>
+      <p class="muted drawer-note">
+        From the job's own hook record and the slot gate. Links open GitHub; this view changes
+        nothing.
+      </p>
+    </section>
+    """
+  end
+
+  attr :href, :string, default: nil
+  slot :inner_block, required: true
+
+  defp maybe_link(%{href: nil} = assigns) do
+    ~H"""
+    {render_slot(@inner_block)}
+    """
+  end
+
+  defp maybe_link(assigns) do
+    ~H"""
+    <a href={@href} target="_blank" rel="noopener noreferrer">{render_slot(@inner_block)}</a>
+    """
+  end
+
+  defp known(nil), do: "unknown"
+  defp known(value), do: value
+
+  defp ago(nil, _now), do: "unknown"
+  defp ago(at, now), do: "#{Overview.format_duration(Overview.elapsed(at, now))} ago"
+
+  defp waiting_words(%SlotRecord{kind: :parked, unparking: false}, _position, holder),
+    do: "the device lock" <> if(holder, do: ", held by #{holder}", else: "")
+
+  defp waiting_words(record, {position, total}, _holder),
+    do:
+      "slot units: #{position} of #{total} in the queue, needs #{units(record.units)}" <>
+        if(record.kind == :parked, do: ", back from the device", else: "")
+
+  defp waiting_words(record, nil, _holder), do: "slot units, needs #{units(record.units)}"
 
   ## Device lock
 

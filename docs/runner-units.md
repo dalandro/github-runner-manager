@@ -52,6 +52,11 @@ under it can remove a hook its next job needs. The installer replaces the
 managed `.env` keys, never appends, and never restarts an active unit
 (`--enable` only enables it), so the stop and start are required.
 
+A change to what the hook scripts do, with the same paths (job records came
+this way), reaches each runner at its next job after the pull. Following the
+steps above is still the safe path: a job that straddles the pull may leave a
+record behind, which the next job start deletes.
+
 A unit rendered by an older version may still carry `RestrictSUIDSGID=yes`. Installs pick up its removal the same way: once a runner is idle, stop it, pull, re-run the installer for it, and start it. Until then jobs on that runner that cold-boot an emulator keep failing.
 
 ## Hardening

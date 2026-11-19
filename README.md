@@ -94,7 +94,8 @@ keys, `GRM_JOB_UNITS`, and `GRM_CONFIG`.
 A local, read-only page for keeping an eye on the host. It leads with one
 verdict (all clear, jobs waiting, or what needs attention), then runners, slot
 pool, queue, device lock, load gate and recent events; panels with nothing to
-show collapse to one line each. Try it
+show collapse to one line each. Tap a queued or running job for its details:
+workflow and job, run, pull request and title, branch, commit and wait. Try it
 with invented data, without configuring anything:
 
 ```bash
