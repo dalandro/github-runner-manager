@@ -237,6 +237,13 @@ defmodule DashboardWeb.StatusLiveTest do
     assert has_element?(view, "#gate.gate-warn", "Heavy steps are held: load 7.20, limit 6")
   end
 
+  test "the limits read as the host's defaults, which a step may override", %{conn: conn} do
+    start_poller(stub({:ok, Fixtures.status()}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#host", "These are the host's defaults")
+  end
+
   test "jobs waiting with nothing broken is a waiting verdict", %{conn: conn} do
     status =
       Fixtures.status(

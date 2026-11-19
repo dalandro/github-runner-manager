@@ -816,7 +816,9 @@ defmodule DashboardWeb.StatusComponents do
         <code>wait-for-load</code>
         lets a heavy step start when load is below the limit and memory is at or above the minimum{if @host.cpus,
           do: "; #{@host.cpus} CPUs",
-          else: ""}.
+          else: ""}. These are the host's defaults; a step may pass its own with
+        <code>--max-load</code>
+        or <code>--min-mem-mb</code>.
       </p>
     </section>
     """
