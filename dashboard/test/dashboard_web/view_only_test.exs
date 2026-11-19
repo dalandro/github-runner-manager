@@ -35,7 +35,16 @@ defmodule DashboardWeb.ViewOnlyTest do
     assert offences == []
   end
 
-  test "the router has one route, and it only reads" do
-    assert [%{verb: :get, path: "/"}] = Phoenix.Router.routes(DashboardWeb.Router)
+  test "the router has one page route, and it only reads; the one input route is the relay's" do
+    assert [%{verb: :get, path: "/"}, %{verb: :post, path: "/ingest"}] =
+             Phoenix.Router.routes(DashboardWeb.Router)
+
+    # The push route goes through its own pipeline, which stops it outside
+    # relay mode (DashboardWeb.IngestControllerTest), and the page does not.
+    assert %{pipe_through: [:ingest]} =
+             Phoenix.Router.route_info(DashboardWeb.Router, "POST", "/ingest", "localhost")
+
+    assert %{pipe_through: [:browser]} =
+             Phoenix.Router.route_info(DashboardWeb.Router, "GET", "/", "localhost")
   end
 end

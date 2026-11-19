@@ -7,19 +7,25 @@ defmodule Dashboard.Application do
   def start(_type, _args) do
     # A mistyped host name or viewer, or an extra host with no viewer list,
     # stops the boot here, not on the first request.
+    # So do relay settings that could never accept a push.
     DashboardWeb.AllowedHosts.list()
     DashboardWeb.Viewers.check_boot!()
+    Dashboard.Relay.check_boot!()
 
     children =
       [
         {Phoenix.PubSub, name: Dashboard.PubSub},
         {Task.Supervisor, name: Dashboard.TaskSupervisor}
-      ] ++ poller() ++ [DashboardWeb.Endpoint]
+      ] ++ inbox() ++ poller() ++ [DashboardWeb.Endpoint]
 
     # rest_for_one: the poller broadcasts through PubSub and reads through the
-    # task supervisor, and pages ask the poller for its snapshot, so each
-    # child depends on the ones before it.
+    # task supervisor (and in relay mode from the inbox), and pages ask the
+    # poller for its snapshot, so each child depends on the ones before it.
     Supervisor.start_link(children, strategy: :rest_for_one, name: Dashboard.Supervisor)
+  end
+
+  defp inbox do
+    if Dashboard.Relay.enabled?(), do: [Dashboard.Relay.Inbox], else: []
   end
 
   defp poller do

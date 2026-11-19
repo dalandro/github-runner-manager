@@ -43,12 +43,29 @@ if config_env() != :test do
           path -> {Dashboard.Source.Demo, path: path}
         end
 
+      # Shows what a runner host pushes to POST /ingest; reads no host itself.
+      # Validated at boot (Dashboard.Relay); see docs/dashboard.md.
+      "relay" ->
+        config :dashboard, :relay,
+          push_tokens: System.get_env("GRM_RELAY_PUSH_TOKENS"),
+          interval_seconds: String.to_integer(System.get_env("GRM_RELAY_INTERVAL_SECONDS", "5"))
+
+        {Dashboard.Source.Relay, []}
+
       other ->
-        raise "GRM_DASHBOARD_SOURCE must be command or demo, got: #{inspect(other)}"
+        raise "GRM_DASHBOARD_SOURCE must be command, demo or relay, got: #{inspect(other)}"
     end
 
-  config :dashboard, Dashboard.Poller,
-    source: source,
-    # Never faster than twice a second: each read runs the status command.
-    interval: max(String.to_integer(System.get_env("GRM_DASHBOARD_INTERVAL_MS", "2000")), 500)
+  case source do
+    # A relay read is a lookup in memory: every second, and straight back to
+    # that after a stale spell, so a returning host shows at once.
+    {Dashboard.Source.Relay, _options} ->
+      config :dashboard, Dashboard.Poller, source: source, interval: 1_000, max_backoff: 1_000
+
+    _command_or_demo ->
+      config :dashboard, Dashboard.Poller,
+        source: source,
+        # Never faster than twice a second: each read runs the status command.
+        interval: max(String.to_integer(System.get_env("GRM_DASHBOARD_INTERVAL_MS", "2000")), 500)
+  end
 end
