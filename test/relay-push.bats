@@ -26,12 +26,14 @@ printf '%s\n' "$@" >> "$stub/curl-argv"
 output=/dev/null
 while (($#)); do
   case $1 in
-    --config) cat "$2" >> "$stub/curl-config"; shift;;
+    --config) printf '%s\n' "$2" >> "$stub/curl-config-paths"; cat "$2" >> "$stub/curl-config"; shift;;
     --output) output=$2; shift;;
   esac
   shift
 done
 cat > "$stub/curl-body"
+# Rotates the token after the first push, as an operator would.
+if [[ -n ${STUB_ROTATE_TO:-} ]]; then printf '%s\n' "$STUB_ROTATE_TO" > "$GRM_RELAY_TOKEN_FILE"; STUB_ROTATE_TO=; fi
 code=$(head -n 1 "$stub/codes")
 if (($(wc -l < "$stub/codes") > 1)); then sed -i 1d "$stub/codes"; fi
 [[ $code == exit* ]] && exit "${code#exit }"
@@ -132,8 +134,11 @@ SCRIPT
   run grep -cF -- "$token" "$BATS_TEST_TMPDIR/curl-argv"
   [ "$output" = 0 ]
   [ "$(cat "$BATS_TEST_TMPDIR/curl-config")" = "header = \"Authorization: Bearer $token\"" ]
+  # A config on a file descriptor: the token is never written to a file.
+  grep -qx '/dev/fd/[0-9]*' "$BATS_TEST_TMPDIR/curl-config-paths"
   grep -qx -- '=https' "$BATS_TEST_TMPDIR/curl-argv"
-  grep -qx -- '--max-time' "$BATS_TEST_TMPDIR/curl-argv"
+  [ "$(grep -A1 -x -- --max-time "$BATS_TEST_TMPDIR/curl-argv" | tail -n 1)" = 15 ]
+  grep -qx 'Content-Type: application/json' "$BATS_TEST_TMPDIR/curl-argv"
   grep -qx -- 'https://relay.example.com/ingest' "$BATS_TEST_TMPDIR/curl-argv"
   grep -qF '"name": "runner-1"' "$BATS_TEST_TMPDIR/curl-body"
   run grep -cF mobile-app "$BATS_TEST_TMPDIR/curl-body"
@@ -170,11 +175,12 @@ SCRIPT
 @test "pushing waits as long as the relay asks, within the clamp" {
   stub_curl 200
   write_token
-  STUB_RESPONSE='{"next_push_seconds": 1}' run "$GRM_ROOT/bin/grm-relay-push"
-  STUB_RESPONSE='{"next_push_seconds": 9000}' run "$GRM_ROOT/bin/grm-relay-push"
-  STUB_RESPONSE='' run "$GRM_ROOT/bin/grm-relay-push"
-  [ "$(cat "$BATS_TEST_TMPDIR/sleeps")" = $'2\n300\n5' ]
-  [ "$output" = '' ]
+  for case in '{"next_push_seconds": 1} 2' '{"next_push_seconds": 9000} 300' ' 5'; do
+    rm -f "$BATS_TEST_TMPDIR/sleeps"
+    STUB_RESPONSE=${case% *} STUB_SLEEPS=1 run "$GRM_ROOT/bin/grm-relay-push"
+    [ "$(cat "$BATS_TEST_TMPDIR/sleeps")" = "${case##* }" ]
+    [ "$output" = '' ]
+  done
 }
 
 @test "failures back off and are logged once, then the recovery once" {
@@ -216,4 +222,13 @@ SCRIPT
   run timeout 3 tail --pid "$pusher" -f /dev/null
   [ "$status" -eq 0 ]
   [ -z "$(ls -A "$TMPDIR")" ]
+}
+
+@test "a rotated token is used from the next push, without a restart" {
+  stub_curl 200
+  write_token
+  rotated=fedcba9876543210fedcba9876543210-next
+  STUB_ROTATE_TO=$rotated STUB_SLEEPS=2 run "$GRM_ROOT/bin/grm-relay-push"
+  [ "$(cat "$BATS_TEST_TMPDIR/curl-config")" = "header = \"Authorization: Bearer $token\"
+header = \"Authorization: Bearer $rotated\"" ]
 }
