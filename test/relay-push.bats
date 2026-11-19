@@ -71,6 +71,8 @@ SCRIPT
   [ "$(in_relay relay_next_interval '{"next_push_seconds":1}')" = 2 ]
   [ "$(in_relay relay_next_interval '{"next_push_seconds": 86400}')" = 300 ]
   [ "$(in_relay relay_next_interval '{"next_push_seconds": 99999999999999999999}')" = 300 ]
+  [ "$(in_relay relay_next_interval '{"next_push_seconds": 0005}')" = 5 ]
+  [ "$(in_relay relay_next_interval '{"next_push_seconds": 000}')" = 2 ]
   [ "$(in_relay relay_next_interval 'not json')" = 5 ]
   [ "$(in_relay relay_next_interval '')" = 5 ]
 }

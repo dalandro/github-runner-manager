@@ -21,8 +21,9 @@ relay_next_interval() {
   local seconds
   if [[ $1 =~ \"next_push_seconds\"[[:space:]]*:[[:space:]]*([0-9]+) ]]; then
     seconds=${BASH_REMATCH[1]}
+    seconds=${seconds#"${seconds%%[!0]*}"}
     if ((${#seconds} > 3)); then seconds=300; fi
-    seconds=$((10#$seconds))
+    seconds=$((10#${seconds:-0}))
     ((seconds >= 2)) || seconds=2
     ((seconds <= 300)) || seconds=300
     printf '%s' "$seconds"
