@@ -33,7 +33,7 @@ push() {
   local token document code
   # Read every time, so a rotated token needs no restart.
   token=$(relay_read_token "$GRM_RELAY_TOKEN_FILE" 2> "$work/error") || { reason=$(<"$work/error"); return 1; }
-  document=$(timeout 60 "$GRM_ROOT/bin/grm-status" --json --public 2> /dev/null) ||
+  document=$(timeout -k 5 60 "$GRM_ROOT/bin/grm-status" --json --public 2> /dev/null) ||
     { reason="grm-status --json --public failed (exit $?)"; return 1; }
   if ((${#document} > 131072)); then reason='status document over 128 KB'; return 1; fi
   : > "$work/reply"
