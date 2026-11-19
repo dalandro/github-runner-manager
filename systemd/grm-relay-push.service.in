@@ -8,7 +8,8 @@
 # See docs/relay-push.md. Outbound HTTPS only; nothing listens.
 [Unit]
 Description=github-runner-manager relay push (outbound only)
-After=network-online.target
+# No After=network-online.target: a user manager cannot see it. Pushes before
+# the network is up fail and back off until it is.
 
 [Service]
 Type=exec
