@@ -104,13 +104,13 @@ defmodule DashboardWeb.StatusLiveTest do
 
       assert has_element?(
                view,
-               ~s(#job-38 a[href="https://github.com/org/mobile-app/actions/runs/8123456789"][rel="noopener noreferrer"]),
+               ~s(#job-38 a[href="https://github.example.com/org/mobile-app/actions/runs/8123456789"][rel="noopener noreferrer"]),
                "8123456789"
              )
 
       assert has_element?(
                view,
-               ~s(#job-38 a[href="https://github.com/org/mobile-app/pull/57"]),
+               ~s(#job-38 a[href="https://github.example.com/org/mobile-app/pull/57"]),
                "#57"
              )
 
@@ -136,6 +136,7 @@ defmodule DashboardWeb.StatusLiveTest do
       assert has_element?(view, "#job-40", "none: push run")
       assert has_element?(view, "#job-42", "slot units: 1 of 2 in the queue, needs 2 units")
       assert has_element?(view, "#job-42", "not yet")
+      assert has_element?(view, "#job-40", "gave them back for the device")
       assert has_element?(view, "#job-41", "none: workflow_dispatch run")
       assert has_element?(view, "#job-41", "attempt 2")
     end

@@ -39,9 +39,8 @@ defmodule Dashboard.Overview do
 
   defp activity(%Runner{unit_state: state}, _record) when state != "active", do: :down
   defp activity(%Runner{worker_pid: nil}, _record), do: :idle
-  defp activity(_runner, %SlotRecord{kind: :queued}), do: :queued
-  defp activity(_runner, %SlotRecord{kind: :parked}), do: :parked
-  defp activity(_runner, _record), do: :running
+  defp activity(_runner, %SlotRecord{} = record), do: job_activity(record)
+  defp activity(_runner, nil), do: :running
 
   @doc "Counts runners per activity, for the summary line."
   @spec runner_counts(Status.t()) :: %{activity() => non_neg_integer()}
@@ -223,8 +222,8 @@ defmodule Dashboard.Overview do
   end
 
   @doc """
-  What a job is doing, in the runner words of `runners/1`: a job asking for
-  its parked units back waits for slots again.
+  What a job is doing, in the words of `runners/1`, which uses it for busy
+  runners: a job asking for its parked units back waits for slots again.
   """
   @spec job_activity(SlotRecord.t()) :: :running | :queued | :parked
   def job_activity(%SlotRecord{kind: :holding}), do: :running

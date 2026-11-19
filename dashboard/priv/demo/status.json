@@ -129,7 +129,7 @@
           "event": "pull_request",
           "actor": "dev-alex",
           "runner": "mobile-app",
-          "server_url": "https://github.com",
+          "server_url": "https://github.example.com",
           "pull_request": 57,
           "pull_request_title": "Keep drafts while offline",
           "queued_at": 1767267932
@@ -155,7 +155,7 @@
           "event": "push",
           "actor": "dev-sam",
           "runner": "tablet-app",
-          "server_url": "https://github.com",
+          "server_url": "https://github.example.com",
           "pull_request": null,
           "pull_request_title": null,
           "queued_at": 1767268396
@@ -181,7 +181,7 @@
           "event": "workflow_dispatch",
           "actor": "dev-alex",
           "runner": "web-app",
-          "server_url": "https://github.com",
+          "server_url": "https://github.example.com",
           "pull_request": null,
           "pull_request_title": null,
           "queued_at": 1767268606
@@ -207,7 +207,7 @@
           "event": "pull_request",
           "actor": "dev-kim",
           "runner": "data-pipeline",
-          "server_url": "https://github.com",
+          "server_url": "https://github.example.com",
           "pull_request": 212,
           "pull_request_title": "Skip rows that arrive after the cut-off",
           "queued_at": 1767268692

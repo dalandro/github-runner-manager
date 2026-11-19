@@ -549,6 +549,7 @@ defmodule DashboardWeb.StatusComponents do
         <button
           type="button"
           class="drawer-close"
+          autofocus
           popovertarget={@id}
           popovertargetaction="hide"
         >
@@ -625,10 +626,8 @@ defmodule DashboardWeb.StatusComponents do
           <dd>{ago(@times.queued_at, @now)}</dd>
         </div>
         <div>
-          <dt>Started</dt>
-          <dd>
-            {if @record.kind == :queued, do: "not yet", else: ago(@times.started_at, @now)}
-          </dd>
+          <dt>Got its units</dt>
+          <dd>{units_since(@record, @times.started_at, @now)}</dd>
         </div>
         <div>
           <dt>On the host for</dt>
@@ -663,6 +662,12 @@ defmodule DashboardWeb.StatusComponents do
 
   defp ago(nil, _now), do: "unknown"
   defp ago(at, now), do: "#{Overview.format_duration(Overview.elapsed(at, now))} ago"
+
+  # A holder's time is when it last got its units: after the device, that is
+  # when it took them back, not when the job started.
+  defp units_since(%SlotRecord{kind: :queued}, _at, _now), do: "not yet"
+  defp units_since(%SlotRecord{kind: :parked}, _at, _now), do: "gave them back for the device"
+  defp units_since(_record, at, now), do: ago(at, now)
 
   defp waiting_words(%SlotRecord{kind: :parked, unparking: false}, _position, holder),
     do: "the device lock" <> if(holder, do: ", held by #{holder}", else: "")

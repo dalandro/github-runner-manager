@@ -18,9 +18,12 @@ defmodule Dashboard.JobDetails do
   @server ~r/\Ahttps?:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?\z/
   @repository ~r/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/
   @run_id ~r/\A[0-9]+\z/
-  @sha ~r/\A[0-9a-fA-F]{7,64}\z/
+  # A full object id: SHA-1 or SHA-256. Anything shorter may be an alias.
+  @sha ~r/\A([0-9a-fA-F]{40}|[0-9a-fA-F]{64})\z/
   @pull_request_ref ~r/\Arefs\/pull\/([1-9][0-9]*)\/(merge|head)\z/
-  @pull_request_events ~w(pull_request pull_request_target pull_request_review pull_request_review_comment)
+  # Events that never belong to a pull request; any other may (an issue
+  # comment on one, an aliased event), so a missing number there is unknown.
+  @no_pull_request_events ~w(push schedule workflow_dispatch workflow_run repository_dispatch release merge_group)
 
   @type details :: %{
           repository: String.t() | nil,
@@ -43,8 +46,8 @@ defmodule Dashboard.JobDetails do
 
   @doc """
   Everything the detail view shows about a slot holder's job. `pull_request`
-  is `:none` when the event is known and is not about a pull request, and
-  `nil` when it is unknown. A record from before job records still names its
+  is `:none` when the event is one that never belongs to a pull request (a
+  push, a manual or scheduled run), and `nil` when it is unknown. A record from before job records still names its
   repository: the slot label is the repository the hook registered.
   """
   @spec describe(SlotRecord.t()) :: details()
@@ -101,8 +104,9 @@ defmodule Dashboard.JobDetails do
   def branch(_job), do: nil
 
   @doc """
-  When the job reached the host (its start hook ran), when it got its slot
-  units, and how long it has been on the host. A queued record's own time
+  When the job reached the host (its start hook ran), when it last got its
+  slot units (after the device, when it took them back), and how long it has
+  been on the host. A queued record's own time
   stands in for an unknown arrival; a parked job's start is unknown, since
   its record's time moved on when it parked.
   """
@@ -147,7 +151,6 @@ defmodule Dashboard.JobDetails do
   defp link(base, path, value, shape),
     do: if(Regex.match?(shape, value), do: base <> path <> value)
 
-  defp no_pull_request(nil), do: nil
-  defp no_pull_request(event) when event in @pull_request_events, do: nil
-  defp no_pull_request(_event), do: :none
+  defp no_pull_request(event) when event in @no_pull_request_events, do: :none
+  defp no_pull_request(_event), do: nil
 end

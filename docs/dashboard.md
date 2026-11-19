@@ -199,7 +199,7 @@ follow the system setting; the header button overrides it.
   tap outside closes it. It shows the repository, workflow and job, the run, the
   pull request with its title when the run belongs to one, the branch, the
   short commit, event, actor, runner, units, what the job waits on and its place
-  in the queue, when it reached the host, when it got its units and how long it
+  in the queue, when it reached the host, when it last got its units and how long it
   has been on the host. Run, pull request and commit link to the job's GitHub
   server (`GITHUB_SERVER_URL`). All of it comes from the
   [job record](job-slots.md#job-records) the start hook writes, through

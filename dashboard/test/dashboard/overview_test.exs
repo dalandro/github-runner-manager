@@ -32,6 +32,16 @@ defmodule Dashboard.OverviewTest do
       assert %{activity: :down} = status |> Overview.runners() |> hd()
     end
 
+    test "a runner whose job asks for its parked units back waits for slots again" do
+      status =
+        Fixtures.status(fn document ->
+          update_in(document, ["slots", "records", Access.at(1)], &Map.put(&1, "unparking", true))
+        end)
+
+      assert %{activity: :queued} =
+               status |> Overview.runners() |> Enum.find(&(&1.runner.name == "tablet-app"))
+    end
+
     test "a job without a slot record still counts as running" do
       status = Fixtures.status(&put_in(&1, ["slots", "records"], []))
 

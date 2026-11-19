@@ -60,19 +60,23 @@ defmodule Dashboard.JobDetailsTest do
 
   describe "describe/1" do
     test "links the repository, run, pull request and commit on the recorded server" do
+      # The demo records an example server, so its invented names link nowhere real.
       details = Fixtures.status().slots.records |> hd() |> JobDetails.describe()
 
       assert details.repository == "org/mobile-app"
-      assert details.repository_url == "https://github.com/org/mobile-app"
-      assert details.run_url == "https://github.com/org/mobile-app/actions/runs/8123456789"
+      assert details.repository_url == "https://github.example.com/org/mobile-app"
+
+      assert details.run_url ==
+               "https://github.example.com/org/mobile-app/actions/runs/8123456789"
+
       assert details.pull_request == 57
       assert details.pull_request_title == "Keep drafts while offline"
-      assert details.pull_request_url == "https://github.com/org/mobile-app/pull/57"
+      assert details.pull_request_url == "https://github.example.com/org/mobile-app/pull/57"
       assert details.branch == "feature/offline-drafts"
       assert details.short_sha == "3f9a1c2"
 
       assert details.commit_url ==
-               "https://github.com/org/mobile-app/commit/3f9a1c27d84be5a0c6f1e2d93b7a4c58e1d06b72"
+               "https://github.example.com/org/mobile-app/commit/3f9a1c27d84be5a0c6f1e2d93b7a4c58e1d06b72"
 
       assert %{workflow: "Android", job: "e2e-android", event: "pull_request"} = details
       assert %{actor: "dev-alex", runner: "mobile-app", run_id: "8123456789"} = details
@@ -117,6 +121,12 @@ defmodule Dashboard.JobDetailsTest do
       assert JobDetails.describe(record(%Job{event: "pull_request"})).pull_request == nil
     end
 
+    test "an event that may belong to a pull request, or an unknown one, leaves it unknown" do
+      for event <- ["issue_comment", "check_run", "event-1", nil] do
+        assert JobDetails.describe(record(%Job{event: event})).pull_request == nil
+      end
+    end
+
     test "names that are not owner/name, such as aliases or the default label, get no links" do
       for repository <- ["runner-1", "org/../x", "org/a b", "https://evil.example/x", "org/."] do
         details =
@@ -145,6 +155,16 @@ defmodule Dashboard.JobDetailsTest do
         )
 
       assert %{run_url: nil, commit_url: nil, short_sha: nil, run_id: "12a"} = details
+
+      for sha <- ["abcdef1", String.duplicate("a", 39), String.duplicate("a", 41)] do
+        assert %{commit_url: nil, short_sha: nil} =
+                 JobDetails.describe(record(%Job{repository: "org/web-app", sha: sha}))
+      end
+
+      sha256 = String.duplicate("b", 64)
+
+      assert JobDetails.describe(record(%Job{repository: "org/web-app", sha: sha256})).commit_url ==
+               "https://github.com/org/web-app/commit/" <> sha256
     end
   end
 
