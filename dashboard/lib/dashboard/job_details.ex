@@ -15,7 +15,7 @@ defmodule Dashboard.JobDetails do
   alias Dashboard.Status.{Job, SlotRecord}
 
   @default_server "https://github.com"
-  @server ~r/\Ahttps?:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?\z/
+  @server ~r/\Ahttps?:\/\/[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?\z/
   @repository ~r/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/
   @run_id ~r/\A[0-9]+\z/
   # A full object id: SHA-1 or SHA-256. Anything shorter may be an alias.
@@ -47,8 +47,9 @@ defmodule Dashboard.JobDetails do
   @doc """
   Everything the detail view shows about a slot holder's job. `pull_request`
   is `:none` when the event is one that never belongs to a pull request (a
-  push, a manual or scheduled run), and `nil` when it is unknown. A record from before job records still names its
-  repository: the slot label is the repository the hook registered.
+  push, a manual or scheduled run), and `nil` when it is unknown. A record
+  from before job records still names its repository: the slot label is the
+  repository the hook registered.
   """
   @spec describe(SlotRecord.t()) :: details()
   def describe(%SlotRecord{job: %Job{} = job} = record) do
@@ -106,9 +107,9 @@ defmodule Dashboard.JobDetails do
   @doc """
   When the job reached the host (its start hook ran), when it last got its
   slot units (after the device, when it took them back), and how long it has
-  been on the host. A queued record's own time
-  stands in for an unknown arrival; a parked job's start is unknown, since
-  its record's time moved on when it parked.
+  been on the host. A queued record's own time stands in for an unknown
+  arrival; a parked job's start is unknown, since its record's time moved on
+  when it parked.
   """
   @spec times(SlotRecord.t(), non_neg_integer()) :: %{
           queued_at: non_neg_integer() | nil,

@@ -329,6 +329,7 @@ defmodule Dashboard.Status do
     }
   end
 
+  defp job!(nil), do: job!(%{})
   defp job!(_other), do: throw({:invalid_field, "slots.records.job"})
 
   # Explicit clauses instead of String.to_existing_atom/1: the set is closed and

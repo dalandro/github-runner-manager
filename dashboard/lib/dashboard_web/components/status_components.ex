@@ -541,7 +541,11 @@ defmodule DashboardWeb.StatusComponents do
       <header class="drawer-header">
         <div class="drawer-heading">
           <p class="muted">Job · ticket {@record.ticket}</p>
-          <h2 id={"#{@id}-title"}>{@details.repository || @record.label}</h2>
+          <h2 id={"#{@id}-title"}>
+            <.maybe_link href={@details.repository_url}>
+              {@details.repository || @record.label}
+            </.maybe_link>
+          </h2>
           <p class={["state", "state-#{@activity}"]}>
             <.icon name={activity_icon(@activity)} /> {activity_word(@activity)}
           </p>

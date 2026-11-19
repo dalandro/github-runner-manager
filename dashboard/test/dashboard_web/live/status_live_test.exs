@@ -114,6 +114,12 @@ defmodule DashboardWeb.StatusLiveTest do
                "#57"
              )
 
+      assert has_element?(
+               view,
+               ~s(#job-38 h2 a[href="https://github.example.com/org/mobile-app"]),
+               "org/mobile-app"
+             )
+
       assert has_element?(view, "#job-38", "Keep drafts while offline")
       assert has_element?(view, "#job-38", "feature/offline-drafts")
 

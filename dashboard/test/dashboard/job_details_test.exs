@@ -144,7 +144,14 @@ defmodule Dashboard.JobDetailsTest do
     end
 
     test "fields that do not have their expected shape are shown but never linked" do
-      for server <- ["javascript:alert(1)", "https://github.com/evil", "ftp://example.com", ""] do
+      for server <- [
+            "javascript:alert(1)",
+            "https://github.com/evil",
+            "ftp://example.com",
+            "https://..",
+            "https://-",
+            ""
+          ] do
         details = JobDetails.describe(record(%Job{repository: "org/web-app", server_url: server}))
         assert details.repository_url == nil
       end

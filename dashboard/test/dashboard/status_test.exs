@@ -47,19 +47,24 @@ defmodule Dashboard.StatusTest do
              } = hd(Fixtures.status().slots.records)
     end
 
-    test "a record without a job, or a job missing fields, from an older producer, is unknown" do
+    test "a record without a job, a null job, or a job missing fields, is unknown" do
       status =
         Fixtures.status(fn document ->
           document
           |> update_in(["slots", "records", Access.at(0)], &Map.delete(&1, "job"))
           |> update_in(["slots", "records", Access.at(1), "job"], &Map.take(&1, ["repository"]))
+          |> put_in(["slots", "records", Access.at(2), "job"], nil)
         end)
 
-      assert [%SlotRecord{job: %Job{} = empty}, %SlotRecord{job: partial} | _] =
-               status.slots.records
+      assert [
+               %SlotRecord{job: %Job{} = empty},
+               %SlotRecord{job: partial},
+               %SlotRecord{job: filtered} | _
+             ] = status.slots.records
 
       assert empty == %Job{}
       assert partial == %Job{repository: "org/tablet-app"}
+      assert filtered == %Job{}
     end
 
     test "rejects a job field of the wrong type" do
