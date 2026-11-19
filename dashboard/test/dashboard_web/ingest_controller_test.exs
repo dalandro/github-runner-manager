@@ -61,11 +61,21 @@ defmodule DashboardWeb.IngestControllerTest do
       assert Inbox.latest(Inbox) == nil
     end
 
-    test "refuses a document over the size cap", %{conn: conn} do
+    test "takes a document of exactly the size cap and refuses one byte more", %{conn: conn} do
+      document = demo_document()
+
+      padded =
+        document <> String.duplicate(" ", IngestController.max_bytes() - byte_size(document))
+
+      assert conn |> push_document(padded <> " ") |> json_response(413)
+      assert Inbox.latest(Inbox) == nil
+      assert conn |> push_document(padded) |> json_response(200)
+    end
+
+    test "checks the token before the size", %{conn: conn} do
       padded = demo_document() <> String.duplicate(" ", IngestController.max_bytes())
 
-      assert conn |> push_document(padded) |> json_response(413)
-      assert Inbox.latest(Inbox) == nil
+      assert conn |> push_document(padded, @token <> "x") |> json_response(401)
     end
 
     test "refuses a body that is not a schema 1 status document", %{conn: conn} do

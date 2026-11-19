@@ -33,8 +33,10 @@ defmodule DashboardWeb.IngestController do
   end
 
   defp read_document(conn) do
+    # An adapter may return more than `length`, so the size is checked too.
     case read_body(conn, length: @max_bytes) do
-      {:ok, body, conn} -> offer(conn, body)
+      {:ok, body, conn} when byte_size(body) <= @max_bytes -> offer(conn, body)
+      {:ok, _body, conn} -> refuse(conn, :too_large)
       {:more, _partial, conn} -> refuse(conn, :too_large)
       {:error, _reason} -> refuse(conn, :unreadable)
     end
