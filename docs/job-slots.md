@@ -89,7 +89,7 @@ pull_request_title Add the thing
 The first line is the holder's start ticks, so a record never passes to a later
 process with the same pid; `queued_at` is when the hook ran. Values lose control
 characters and are cut at 256 characters. The file is written aside and renamed
-over, with the state directory's permissions. The completion hook deletes it,
+over, with the mode of the other state files (`GRM_UMASK`). The completion hook deletes it,
 and every start hook deletes records whose process is gone. Writing is best
 effort: a record that cannot be written never fails the job. `grm-status` only
 reads them; job records are diagnostic metadata, not proof of identity.

@@ -132,3 +132,14 @@ RECORD
   start_pull_request_job
   [ -f "$GRM_STATE_DIR/jobs/1notapid" ]
 }
+
+@test "a temporary record left by a hook killed mid-write goes once it is old" {
+  start_holder
+  mkdir -p "$GRM_STATE_DIR/jobs"
+  : > "$GRM_STATE_DIR/jobs/.record.old"
+  touch -d '2 minutes ago' "$GRM_STATE_DIR/jobs/.record.old"
+  : > "$GRM_STATE_DIR/jobs/.record.new"
+  start_pull_request_job
+  [ ! -e "$GRM_STATE_DIR/jobs/.record.old" ]
+  [ -e "$GRM_STATE_DIR/jobs/.record.new" ]
+}

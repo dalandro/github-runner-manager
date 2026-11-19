@@ -157,8 +157,8 @@ write_job_record() {
       job_record_line server_url "${GITHUB_SERVER_URL:-}"
       get_pull_request "${GITHUB_EVENT_PATH:-}"
     } > "$temporary" &&
-      # Renamed over (-T: never into a directory), so a symlink at the record
-      # path is replaced, never written through.
+      # Renamed over (GNU -T: never into a directory), so a symlink at the
+      # record path is replaced, never written through.
       mv -fT "$temporary" "$directory/$holder"; then
       exit 0
     fi
@@ -193,9 +193,11 @@ if type(number) is int and isinstance(title, str):
 }
 
 # Drops the records of jobs whose process is gone: a completion hook that never
-# ran (runner killed, host rebooted) leaves one behind.
+# ran (runner killed, host rebooted) leaves one behind. So does a hook killed
+# mid-write: its temporary file goes once it is a minute old.
 reap_job_records() {
   local file key start
+  find "$1" -maxdepth 1 -type f -name '.record.*' -mmin +1 -delete 2>/dev/null || true
   for file in "$1"/[0-9]*; do
     is_uint "${file##*/}" && [[ -f $file && ! -L $file ]] || continue
     key='' start=''
