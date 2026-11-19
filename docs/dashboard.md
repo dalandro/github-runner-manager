@@ -71,6 +71,9 @@ one, served to a private network, only listed viewers see it, from anywhere.
   an `http(s)` origin); they open in a new tab without a referrer.
   The status command is started with a fixed argument vector from
   configuration; nothing a request carries can reach it.
+- In relay mode, and only there, one route takes input: `POST /ingest`, where
+  the runner host pushes its status with a push token. A relay runs no status
+  command. See [Relay mode](#relay-mode-loopback-only-for-now).
 - A content security policy allows scripts and styles from the dashboard itself
   only, with no inline code. Values from the status document are escaped by the
   templates.
@@ -103,7 +106,7 @@ version it does not know instead of guessing.
 
 | Module | Job |
 | --- | --- |
-| `Dashboard.Source` | Behaviour for "read the host once". `Source.Command` runs the status command under `timeout`; `Source.Demo` replays the bundled reading. |
+| `Dashboard.Source` | Behaviour for "read the host once". `Source.Command` runs the status command under `timeout`; `Source.Demo` replays the bundled reading; `Source.Relay` serves the last push (see [Relay mode](#relay-mode-loopback-only-for-now)). |
 | `Dashboard.Status` | Parses the document into structs at the boundary. A wrong type or missing field is an error naming the field. Enumerated values map through explicit clauses; no atoms are created from input. |
 | `Dashboard.Overview` | Pure functions for everything derived: runner activity, pool use, queue order, waits, lock condition, load gate, formatting. `now` is always an argument. |
 | `Dashboard.Snapshot` | The latest reading plus whether reading currently fails, and since when. |
@@ -228,6 +231,49 @@ The problem and idle shots use the other demo readings in `dashboard/priv/demo/`
 `GRM_DASHBOARD_DEMO_FILE="$PWD/dashboard/priv/demo/problems.json" bin/grm-dashboard --demo`
 (or `idle.json`; the path must be absolute, since the server runs in `dashboard/`).
 
+## Relay mode (loopback only, for now)
+
+A relay shows what a runner host pushes to it instead of reading a host. It is
+the first step towards viewing the board from a phone without a private
+network: the host sends its `grm-status --json` document out, and the relay,
+which can never reach the host, serves the board from the last one it got.
+For now it listens on 127.0.0.1 like every other mode; nothing here is public.
+
+```bash
+export GRM_RELAY_PUSH_TOKENS=$(openssl rand -hex 32)   # one or more, comma-separated
+bin/grm-dashboard --relay --port 4391
+# in another shell, with the same token:
+curl --config <(printf 'header = "Authorization: Bearer %s"\n' "$GRM_RELAY_PUSH_TOKENS") \
+  --data-binary @dashboard/priv/demo/status.json http://127.0.0.1:4391/ingest
+# {"next_push_seconds":5}
+```
+
+- `POST /ingest` is the one route that takes input, and exists only in relay
+  mode (any other mode answers 404). It has its own pipeline: no session, no
+  CSRF token, no HTML.
+- A push needs `Authorization: Bearer <token>` with one of the tokens in
+  `GRM_RELAY_PUSH_TOKENS`, each 32 or more visible characters, compared in
+  constant time. Several tokens let a new one overlap the old while rotating.
+  Tokens come from the environment only, never from the command line.
+- The body is read only after the token passed, and at most 128 KB of it
+  (413 above that). It must be a schema 1 document; the same parser as every
+  other mode reads it (422 otherwise). A document generated before the last
+  accepted one is refused (409), unless the last push is over ten minutes old,
+  which reads as the host's clock having stepped back.
+- The reply to a good push is `{"next_push_seconds": N}`, N from
+  `GRM_RELAY_INTERVAL_SECONDS` (default 5, 2 to 900). Refusals name their
+  reason and echo nothing that was sent.
+- The latest push is kept in memory only (`Dashboard.Relay.Inbox`); a restart
+  empties it until the next push. The page reads it every second, and
+  "updated" is when the push arrived.
+- After three missed pushes, and at least 30 seconds, the board keeps the last
+  picture and turns to "Stale data": the relay cannot reach the host, it can
+  only wait. Before the first push the page says no report has arrived.
+
+The relay modules: `Dashboard.Relay` (settings, staleness), `Dashboard.Relay.Ingest`
+(token and order decisions, pure), `Dashboard.Relay.Inbox`, `Dashboard.Source.Relay`
+and `DashboardWeb.IngestController`.
+
 ## Running it permanently
 
 `systemd/grm-dashboard.service.in` is a template for a systemd user unit; the
@@ -264,8 +310,9 @@ mix check          # format check, compile with warnings as errors, tests
 `test/dashboard-smoke.bats` starts the real server in demo mode and checks that
 it listens on 127.0.0.1 only, serves the page, refuses path traversal and
 foreign `Host` headers, answers to one extra allowed name, completes a WebSocket
-handshake for allowed origins only, and exits on TERM; it is skipped where
-Elixir is absent.
+handshake for allowed origins only, and exits on TERM. It also starts relay
+mode and checks that a push is kept with the token only and then shown. Both
+are skipped where Elixir is absent.
 
 ## Not verified
 

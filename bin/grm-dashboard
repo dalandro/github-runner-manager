@@ -8,12 +8,15 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
 # that serves it on a private network (docs/remote-access.md). The listening
 # address stays 127.0.0.1. An extra name needs at least one --viewer: a
 # user, as the proxy names them in its identity header, who may see the page.
-usage='usage: grm-dashboard [--demo] [--port N] [--allow-host NAME]... [--viewer IDENTITY]...'
-demo=0 port=${GRM_DASHBOARD_PORT:-4290} allowed_hosts=${GRM_DASHBOARD_ALLOWED_HOSTS:-}
+# --relay shows what a runner host pushes to POST /ingest instead of reading
+# this host; the push tokens come from GRM_RELAY_PUSH_TOKENS, never argv.
+usage='usage: grm-dashboard [--demo | --relay] [--port N] [--allow-host NAME]... [--viewer IDENTITY]...'
+demo=0 relay=0 port=${GRM_DASHBOARD_PORT:-4290} allowed_hosts=${GRM_DASHBOARD_ALLOWED_HOSTS:-}
 viewers=${GRM_DASHBOARD_VIEWERS:-}
 while (($#)); do
   case $1 in
     --demo) demo=1; shift;;
+    --relay) relay=1; shift;;
     --port)
       (($# >= 2)) || usage_error 'grm-dashboard: missing value for --port'
       port=$2; shift 2;;
@@ -26,6 +29,12 @@ while (($#)); do
     *) usage_error "$usage";;
   esac
 done
+if ((demo && relay)); then usage_error 'grm-dashboard: --demo and --relay cannot be combined'; fi
+# The dashboard applies the full rule at boot and is the authority.
+push_tokens=${GRM_RELAY_PUSH_TOKENS:-}
+if ((relay)) && [[ -z ${push_tokens//[[:space:],]/} ]]; then
+  usage_error 'grm-dashboard: --relay needs GRM_RELAY_PUSH_TOKENS (comma-separated push tokens of 32 or more characters); see docs/dashboard.md'
+fi
 if ! is_uint "$port" || ((port < 1 || port > 65535)); then usage_error 'grm-dashboard: invalid port'; fi
 # Exact names only; the dashboard applies the same rule and is the authority.
 host_label='[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?'
@@ -41,8 +50,9 @@ export PORT=$port PHX_SERVER=true MIX_ENV=prod
 export GRM_STATUS_COMMAND=${GRM_STATUS_COMMAND:-$GRM_ROOT/bin/grm-status} GRM_DASHBOARD_SOURCE=command
 export GRM_DASHBOARD_ALLOWED_HOSTS=$allowed_hosts GRM_DASHBOARD_VIEWERS=$viewers
 if ((demo)); then GRM_DASHBOARD_SOURCE=demo; fi
+if ((relay)); then GRM_DASHBOARD_SOURCE=relay; fi
 # -e, not -f: GRM_CONFIG=/dev/null is a deliberate "no config", not a missing one.
-if ((!demo)) && [[ ! -e $GRM_CONFIG ]]; then
+if ((!demo && !relay)) && [[ ! -e $GRM_CONFIG ]]; then
   printf 'grm-dashboard: no config file at %s, so running on defaults; set GRM_CONFIG to point at one, or create it from config.example.env.\n' "$GRM_CONFIG"
 fi
 release=$dashboard/_build/prod/rel/dashboard/bin/dashboard
@@ -69,6 +79,7 @@ cd "$dashboard"
 # First run only: fetch the Hex packages (network), then mix compiles them.
 if [[ ! -d deps/phoenix ]]; then mix deps.get --only prod; fi
 printf 'grm-dashboard: http://127.0.0.1:%s (loopback only; stop with Ctrl-C)\n' "$port"
+if ((relay)); then printf 'grm-dashboard: relay mode: the host pushes to http://127.0.0.1:%s/ingest\n' "$port"; fi
 if [[ -n $allowed_hosts ]]; then printf 'grm-dashboard: also answers to: %s\n' "$allowed_hosts"; fi
 if [[ -n $viewers ]]; then printf 'grm-dashboard: viewers: %s\n' "$viewers"; fi
 exec mix phx.server

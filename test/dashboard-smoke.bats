@@ -19,6 +19,15 @@ socket_handshake() {
     "http://127.0.0.1:$port/live/websocket?vsn=2.0.0" 2> /dev/null | head -n 1
 }
 is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/robots.txt"; }
+page_has() { curl -fsS "http://127.0.0.1:$port/" | grep -qF -- "$1"; }
+wait_until_ready() { # <server pid>
+  local attempt
+  for ((attempt=0; attempt<240; attempt++)); do
+    if is_ready; then return 0; fi
+    kill -0 "$1"
+    sleep 1
+  done
+}
 
 @test "dashboard serves demo data on loopback only and stops on TERM" {
   command -v mix > /dev/null || skip 'Elixir is not installed'
@@ -28,12 +37,7 @@ is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/robots.txt"; }
   "$GRM_ROOT/bin/grm-dashboard" --demo --port "$port" --allow-host "$extra_host" --viewer "$viewer" > "$BATS_TEST_TMPDIR/server.log" 2>&1 &
   server=$!
   processes+=("$server")
-  local attempt
-  for ((attempt=0; attempt<240; attempt++)); do
-    if is_ready; then break; fi
-    kill -0 "$server"
-    sleep 1
-  done
+  wait_until_ready "$server"
 
   # Bound to 127.0.0.1 and nothing else.
   run listeners
@@ -87,6 +91,49 @@ is_ready() { curl -fsS -o /dev/null "http://127.0.0.1:$port/robots.txt"; }
   [[ $output == *' 101 '* ]]
   run socket_handshake 'https://attacker.example'
   [[ $output == *' 403 '* ]]
+
+  kill -TERM "$server"
+  wait "$server"
+  ! is_listening
+}
+
+@test "relay mode on loopback shows a push made with a push token only" {
+  command -v mix > /dev/null || skip 'Elixir is not installed'
+  [[ -d $GRM_ROOT/dashboard/deps/phoenix ]] || skip 'dashboard dependencies are not fetched'
+  ! is_listening || skip "port $port is in use"
+
+  local token document=$GRM_ROOT/dashboard/priv/demo/status.json
+  token=$(head -c 30 /dev/urandom | base64)
+  GRM_RELAY_PUSH_TOKENS=$token "$GRM_ROOT/bin/grm-dashboard" --relay --port "$port" > "$BATS_TEST_TMPDIR/server.log" 2>&1 &
+  server=$!
+  processes+=("$server")
+  wait_until_ready "$server"
+
+  run listeners
+  [ "${#lines[@]}" -eq 1 ]
+  [[ ${lines[0]} == *"127.0.0.1:$port"* ]]
+
+  run curl -fsS "http://127.0.0.1:$port/"
+  [ "$status" -eq 0 ]
+  [[ $output == *'No report yet'* && $output != *'org/'* ]]
+
+  # Without the token nothing is kept.
+  run curl -sS -o /dev/null -w '%{http_code}' --data-binary "@$document" "http://127.0.0.1:$port/ingest"
+  [ "$output" = 401 ]
+  run curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong-token-of-thirty-two-chars-x' \
+    --data-binary "@$document" "http://127.0.0.1:$port/ingest"
+  [ "$output" = 401 ]
+  run curl -fsS "http://127.0.0.1:$port/"
+  [[ $output != *'org/'* ]]
+
+  # The token reaches curl through a config on a file descriptor, not argv.
+  run curl -sS -w ' %{http_code}' --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
+    --data-binary "@$document" "http://127.0.0.1:$port/ingest"
+  [ "$output" = '{"next_push_seconds":5} 200' ]
+  # The page reads the relay's inbox every second.
+  wait_for page_has 'org/mobile-app'
+  page_has 'cannot reach the host'
+  ! grep -qF -- "$token" "$BATS_TEST_TMPDIR/server.log"
 
   kill -TERM "$server"
   wait "$server"
