@@ -242,7 +242,8 @@ For now it listens on 127.0.0.1 like every other mode; nothing here is public.
 ```bash
 token=$(openssl rand -hex 32)
 GRM_RELAY_PUSH_TOKENS=$token bin/grm-dashboard --relay --port 4391 &
-# A push carries one token; the relay may accept several (comma-separated).
+# Once it answers: a push carries one token; the relay may accept several
+# (comma-separated).
 curl --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
   --data-binary @dashboard/priv/demo/status.json http://127.0.0.1:4391/ingest
 # {"next_push_seconds":5}
