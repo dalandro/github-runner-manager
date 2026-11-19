@@ -240,10 +240,10 @@ which can never reach the host, serves the board from the last one it got.
 For now it listens on 127.0.0.1 like every other mode; nothing here is public.
 
 ```bash
-export GRM_RELAY_PUSH_TOKENS=$(openssl rand -hex 32)   # one or more, comma-separated
-bin/grm-dashboard --relay --port 4391
-# in another shell, with the same token:
-curl --config <(printf 'header = "Authorization: Bearer %s"\n' "$GRM_RELAY_PUSH_TOKENS") \
+token=$(openssl rand -hex 32)
+GRM_RELAY_PUSH_TOKENS=$token bin/grm-dashboard --relay --port 4391 &
+# A push carries one token; the relay may accept several (comma-separated).
+curl --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
   --data-binary @dashboard/priv/demo/status.json http://127.0.0.1:4391/ingest
 # {"next_push_seconds":5}
 ```
@@ -264,8 +264,9 @@ curl --config <(printf 'header = "Authorization: Bearer %s"\n' "$GRM_RELAY_PUSH_
   `GRM_RELAY_INTERVAL_SECONDS` (default 5, 2 to 900). Refusals name their
   reason and echo nothing that was sent.
 - The latest push is kept in memory only (`Dashboard.Relay.Inbox`); a restart
-  empties it until the next push. The page reads it every second, and
-  "updated" is when the push arrived.
+  empties it until the next push. The page reads it every second
+  (`GRM_DASHBOARD_INTERVAL_MS` does not apply), and "updated" is when the push
+  arrived.
 - After three missed pushes, and at least 30 seconds, the board keeps the last
   picture and turns to "Stale data": the relay cannot reach the host, it can
   only wait. Before the first push the page says no report has arrived.
