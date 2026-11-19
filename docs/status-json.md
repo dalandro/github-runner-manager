@@ -28,7 +28,12 @@ process, whatever the watchdog's kill setting.
     "capacity": 6, "used": 5, "max_wait_seconds": 2700,
     "records": [
       {"kind": "holding", "ticket": 41, "holder_pid": 52877, "units": 2, "label": "org/web-app",
-       "since": 1767268606, "unparking": false}
+       "since": 1767268606, "unparking": false,
+       "job": {"repository": "org/web-app", "workflow": "CI", "job": "test", "run_id": "8123460345",
+               "run_attempt": 1, "ref": "refs/pull/7/merge", "head_ref": "feature/x",
+               "sha": "5c1d8e2fa907b34e6d1c0a8f2b9e7d4c3a6f1e05", "event": "pull_request",
+               "actor": "dev-alex", "runner": "web-app", "server_url": "https://github.com",
+               "pull_request": 7, "pull_request_title": "Add the thing", "queued_at": 1767268601}}
     ]
   },
   "device_lock": {
@@ -48,10 +53,11 @@ process, whatever the watchdog's kill setting.
 | --- | --- |
 | `schema` | Integer version. Additive changes keep the number; a removed or re-typed field raises it. Readers must reject versions they do not know. |
 | `generated_at` | Epoch seconds when the document was produced. All other times are epoch seconds too. |
-| `host.load_1m`, `host.memory_available_mb` | Current readings; `null` when unavailable. `max_load` and `min_memory_mb` are the `wait-for-load` thresholds: the gate passes when load is below the first and memory at or above the second. |
+| `host.load_1m`, `host.memory_available_mb` | Current readings; `null` when unavailable. `max_load` and `min_memory_mb` are the host's default `wait-for-load` thresholds (`GRM_MAX_LOAD`, `GRM_MIN_MEM_MB`): the gate passes when load is below the first and memory at or above the second. A step that passes `--max-load` or `--min-mem-mb` waits on its own values, which the document does not show. |
 | `runners[]` | One entry per `GRM_RUNNERS` line, in configuration order. `unit_state` is the first word `systemctl is-active` prints (`active`, `inactive`, `failed`, ...) or `unknown`. `worker_pid` is the job worker process whose executable lives in that runner's directory, or `null` when the runner is idle. |
 | `workers[]` | Every busy job worker owned by the current user, including runners outside `GRM_RUNNERS`. `pid` is its process id; `directory` is the executable path with its last two components removed (`/srv/runners/web-app/bin/Runner.Worker` becomes `/srv/runners/web-app`, also for `bin.<version>`). Older producers may omit this array; readers treat it as empty. |
 | `slots.records[]` | Live records after in-memory reaping, in state-file order. `kind` is `holding`, `queued` or `parked`; queue order is ascending `ticket`. `holder_pid` equals a runner's `worker_pid` when the job came through the runner hooks. `since` is the last transition (`null` for records older than the field). `unparking` is true while a parked job is actively asking for its units back. |
+| `slots.records[].job` | What the job's start hook recorded ([job records](job-slots.md#job-records)). Always an object with these keys; a field the record lacks is `null`, and all are `null` for a holder without a record. `run_id` is a string, `run_attempt`, `pull_request` and `queued_at` (epoch seconds, when the start hook ran) are numbers. Older producers omit `job`; readers treat a missing or `null` object, or a missing key, as unknown. Strings are ASCII: any other character reads `?`, as everywhere in this document. |
 | `device_lock.state` | `absent` (no file at the configured lock path), `free` or `held`, from the lock's flock holders. |
 | `device_lock.holder` | The wrapper's holder file, or `null`. `alive` says whether that wrapper process still exists; a `held` lock without a live holder is a leaked descriptor. |
 | `device_lock.watchdog.stale[]` | What `stale-lock-watchdog` would report now: flock holders other than the live wrapper, older than `min_age_seconds`. `kill` reports the configured mode only. |

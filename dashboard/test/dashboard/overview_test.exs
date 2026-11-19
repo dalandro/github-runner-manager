@@ -32,6 +32,16 @@ defmodule Dashboard.OverviewTest do
       assert %{activity: :down} = status |> Overview.runners() |> hd()
     end
 
+    test "a runner whose job asks for its parked units back waits for slots again" do
+      status =
+        Fixtures.status(fn document ->
+          update_in(document, ["slots", "records", Access.at(1)], &Map.put(&1, "unparking", true))
+        end)
+
+      assert %{activity: :queued} =
+               status |> Overview.runners() |> Enum.find(&(&1.runner.name == "tablet-app"))
+    end
+
     test "a job without a slot record still counts as running" do
       status = Fixtures.status(&put_in(&1, ["slots", "records"], []))
 
@@ -105,6 +115,43 @@ defmodule Dashboard.OverviewTest do
 
       assert ["org/tablet-app"] = slots |> Overview.parked() |> Enum.map(& &1.label)
       refute "org/tablet-app" in (slots |> Overview.queue() |> Enum.map(& &1.label))
+    end
+  end
+
+  describe "jobs/1, queue_position/2, job_activity/1 and runner_for/2" do
+    test "every job the slot gate knows, in ticket order" do
+      assert [38, 40, 41, 42, 43] =
+               Fixtures.status().slots |> Overview.jobs() |> Enum.map(& &1.ticket)
+    end
+
+    test "a waiting job's place in the admission order, and none for the others" do
+      slots = Fixtures.status().slots
+      [mobile, tablet, _web, pipeline, api] = Overview.jobs(slots)
+
+      assert Overview.queue_position(slots, pipeline) == {1, 2}
+      assert Overview.queue_position(slots, api) == {2, 2}
+      assert Overview.queue_position(slots, mobile) == nil
+      assert Overview.queue_position(slots, tablet) == nil
+    end
+
+    test "what a job is doing, in the runner words" do
+      slots =
+        Fixtures.status(fn document ->
+          update_in(document, ["slots", "records", Access.at(4)], fn record ->
+            Map.merge(record, %{"kind" => "parked", "unparking" => true})
+          end)
+        end).slots
+
+      assert [:running, :parked, :running, :queued, :queued] =
+               slots |> Overview.jobs() |> Enum.map(&Overview.job_activity/1)
+    end
+
+    test "the configured runner whose worker is the job's holder" do
+      status = Fixtures.status()
+      [mobile | _] = Overview.jobs(status.slots)
+
+      assert %{name: "mobile-app"} = Overview.runner_for(status, mobile)
+      assert Overview.runner_for(%{status | runners: []}, mobile) == nil
     end
   end
 

@@ -64,3 +64,36 @@ queue priority. Overcommit remains visible. Notices describe admission and, ever
 The guarantee is accounting, not hard quotas; a stuck live holder remains until
 it exits or the operator releases it. Reboot clears process identities; do not
 share state between machines. Exit 2 means usage/configuration error.
+
+## Job records
+
+The start hook also writes what the runner tells it about the job to
+`$GRM_STATE_DIR/jobs/<holder-pid>`, for the status views: one `key value` line
+per field the job has, from the runner's variables (`GITHUB_REPOSITORY`,
+`GITHUB_WORKFLOW`, `GITHUB_JOB`, `GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`,
+`GITHUB_REF`, `GITHUB_HEAD_REF`, `GITHUB_SHA`, `GITHUB_EVENT_NAME`,
+`GITHUB_ACTOR`, `RUNNER_NAME`, `GITHUB_SERVER_URL`), plus the pull request
+number and title from the event payload (`GITHUB_EVENT_PATH`) when `python3` is
+installed. Nothing is fetched over the network.
+
+```text
+start 18232718
+queued_at 1767268692
+repository org/repo-a
+workflow CI
+ref refs/pull/7/merge
+pull_request 7
+pull_request_title Add the thing
+```
+
+The first line is the holder's start ticks, so a record never passes to a later
+process with the same pid; `queued_at` is when the hook ran. Values lose control
+characters and are cut at 256 characters. The file is written aside and renamed
+over, with the mode of the other state files (`GRM_UMASK`). The completion hook deletes it,
+and every start hook deletes records whose process is gone. Writing is best
+effort: a record that cannot be written never fails the job. `grm-status` only
+reads them; job records are diagnostic metadata, not proof of identity.
+
+Records appear for jobs that start after the hooks are updated; jobs admitted
+earlier, and holders outside the hooks (`job-slots acquire` by hand), have none
+and show as unknown.

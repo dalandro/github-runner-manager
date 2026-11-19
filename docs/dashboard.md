@@ -64,7 +64,11 @@ one, served to a private network, only listed viewers see it, from anywhere.
   handful.
 - The page is view-only by construction: it handles no events from the
   browser, has no forms and no parameters, and a test flags the usual ways
-  that would change.
+  that would change. A job's detail view is part of the rendered page and
+  opens as a browser popover (`popovertarget`), so opening one sends nothing
+  to the server. Its links go to the job's GitHub server only when every part
+  has the exact shape GitHub gives it (owner/name, numeric run id, hex commit,
+  an `http(s)` origin); they open in a new tab without a referrer.
   The status command is started with a fixed argument vector from
   configuration; nothing a request carries can reach it.
 - A content security policy allows scripts and styles from the dashboard itself
@@ -74,7 +78,8 @@ one, served to a private network, only listed viewers see it, from anywhere.
   lock, and never signals a process; the dashboard only runs that command.
 
 What it shows is still information about the host (repository names, job names,
-process ids), which is one more reason to keep it local. Every job on the host
+branches, pull request titles, who started a run, process ids), which is one
+more reason to keep it local. Every job on the host
 can read the same information directly while runners and the dashboard share
 an account: see [runner-units.md](runner-units.md#separate-accounts).
 
@@ -187,6 +192,19 @@ follow the system setting; the header button overrides it.
 - **Job slots**: one cell per unit while units are used. Hatched cells past
   capacity mean overcommit: an oversized job entered alone or a job passed
   the maximum wait. **Queue** lists admission order and wait times.
+- **Job details**: every job the slot gate knows (in the queue, running,
+  parked) opens a detail view from its row: tap or click anywhere on the row,
+  or focus its name and press Enter. It is a drawer at the right on a wide
+  screen and a sheet from the bottom on a phone; Escape, the Close button or a
+  tap outside closes it. It shows the repository, workflow and job, the run, the
+  pull request with its title when the run belongs to one, the branch, the
+  short commit, event, actor, runner, units, what the job waits on and its place
+  in the queue, when it reached the host, when it last got its units and how long it
+  has been on the host. Run, pull request and commit link to the job's GitHub
+  server (`GITHUB_SERVER_URL`). All of it comes from the
+  [job record](job-slots.md#job-records) the start hook writes, through
+  `grm-status --json`; the page fetches nothing. A job admitted before the
+  hooks recorded jobs, or a field the record lacks, reads "unknown".
 - **Device lock**: *Held* by a live wrapper; *Unclaimed* when its wrapper is
   gone; *Stale* when the watchdog reports a holder. The page never stops jobs.
 - **Host**: "Heavy steps may start" when the gate is open; "Heavy steps are

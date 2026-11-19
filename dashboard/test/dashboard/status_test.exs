@@ -2,7 +2,7 @@ defmodule Dashboard.StatusTest do
   use ExUnit.Case, async: true
 
   alias Dashboard.{Fixtures, Status}
-  alias Dashboard.Status.{DeviceLock, LockHolder, Runner, SlotRecord, Worker}
+  alias Dashboard.Status.{DeviceLock, Job, LockHolder, Runner, SlotRecord, Worker}
 
   describe "parse/1" do
     test "turns the demo document into structs" do
@@ -29,6 +29,54 @@ defmodule Dashboard.StatusTest do
     test "a document without workers, from an older producer, has none" do
       assert {:ok, %Status{workers: []}} =
                Fixtures.document() |> Map.delete("workers") |> Status.parse()
+    end
+
+    test "gives each slot record the job its hooks recorded" do
+      assert %SlotRecord{
+               job: %Job{
+                 repository: "org/mobile-app",
+                 workflow: "Android",
+                 job: "e2e-android",
+                 run_id: "8123456789",
+                 run_attempt: 1,
+                 ref: "refs/pull/57/merge",
+                 pull_request: 57,
+                 pull_request_title: "Keep drafts while offline",
+                 queued_at: 1_767_267_932
+               }
+             } = hd(Fixtures.status().slots.records)
+    end
+
+    test "a record without a job, a null job, or a job missing fields, is unknown" do
+      status =
+        Fixtures.status(fn document ->
+          document
+          |> update_in(["slots", "records", Access.at(0)], &Map.delete(&1, "job"))
+          |> update_in(["slots", "records", Access.at(1), "job"], &Map.take(&1, ["repository"]))
+          |> put_in(["slots", "records", Access.at(2), "job"], nil)
+        end)
+
+      assert [
+               %SlotRecord{job: %Job{} = empty},
+               %SlotRecord{job: partial},
+               %SlotRecord{job: filtered} | _
+             ] = status.slots.records
+
+      assert empty == %Job{}
+      assert partial == %Job{repository: "org/tablet-app"}
+      assert filtered == %Job{}
+    end
+
+    test "rejects a job field of the wrong type" do
+      assert {:error, {:invalid_field, "pull_request"}} =
+               Fixtures.document()
+               |> put_in(["slots", "records", Access.at(0), "job", "pull_request"], "57")
+               |> Status.parse()
+
+      assert {:error, {:invalid_field, "slots.records.job"}} =
+               Fixtures.document()
+               |> put_in(["slots", "records", Access.at(0), "job"], "org/mobile-app")
+               |> Status.parse()
     end
 
     test "accepts the nulls the schema allows" do

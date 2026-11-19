@@ -39,9 +39,8 @@ defmodule Dashboard.Overview do
 
   defp activity(%Runner{unit_state: state}, _record) when state != "active", do: :down
   defp activity(%Runner{worker_pid: nil}, _record), do: :idle
-  defp activity(_runner, %SlotRecord{kind: :queued}), do: :queued
-  defp activity(_runner, %SlotRecord{kind: :parked}), do: :parked
-  defp activity(_runner, _record), do: :running
+  defp activity(_runner, %SlotRecord{} = record), do: job_activity(record)
+  defp activity(_runner, nil), do: :running
 
   @doc "Counts runners per activity, for the summary line."
   @spec runner_counts(Status.t()) :: %{activity() => non_neg_integer()}
@@ -206,6 +205,36 @@ defmodule Dashboard.Overview do
     |> Enum.filter(&(&1.kind == :parked and not &1.unparking))
     |> Enum.sort_by(& &1.ticket)
   end
+
+  @doc "Every job the slot gate knows, in ticket order: the jobs with a detail view."
+  @spec jobs(Slots.t()) :: [SlotRecord.t()]
+  def jobs(%Slots{records: records}), do: Enum.sort_by(records, & &1.ticket)
+
+  @doc "A waiting job's place in the admission order and the queue's length, or `nil`."
+  @spec queue_position(Slots.t(), SlotRecord.t()) :: {pos_integer(), pos_integer()} | nil
+  def queue_position(%Slots{} = slots, %SlotRecord{ticket: ticket}) do
+    queue = queue(slots)
+
+    case Enum.find_index(queue, &(&1.ticket == ticket)) do
+      nil -> nil
+      index -> {index + 1, length(queue)}
+    end
+  end
+
+  @doc """
+  What a job is doing, in the words of `runners/1`, which uses it for busy
+  runners: a job asking for its parked units back waits for slots again.
+  """
+  @spec job_activity(SlotRecord.t()) :: :running | :queued | :parked
+  def job_activity(%SlotRecord{kind: :holding}), do: :running
+  def job_activity(%SlotRecord{kind: :queued}), do: :queued
+  def job_activity(%SlotRecord{kind: :parked, unparking: true}), do: :queued
+  def job_activity(%SlotRecord{kind: :parked}), do: :parked
+
+  @doc "The configured runner whose busy worker is the job's holder, or `nil`."
+  @spec runner_for(Status.t(), SlotRecord.t()) :: Runner.t() | nil
+  def runner_for(%Status{runners: runners}, %SlotRecord{holder_pid: pid}),
+    do: Enum.find(runners, &(&1.worker_pid == pid))
 
   @doc "Seconds since an epoch time, never negative; `nil` when the time is unknown."
   @spec elapsed(non_neg_integer() | nil, non_neg_integer()) :: non_neg_integer() | nil

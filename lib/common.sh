@@ -126,6 +126,91 @@ log_event() {
   ) 2>/dev/null || true
 }
 
+# Job records: what a runner job hook knows about its job, for the status views
+# (docs/job-slots.md#job-records). One file per holder, jobs/<pid>, with one
+# "key value" line per known field; the first line, "start <ticks>", ties it to
+# that process so a reused pid never inherits a record. Best effort, like the
+# event log: a record that cannot be written never fails the hook.
+write_job_record() {
+  local holder=$1 start directory=$GRM_STATE_DIR/jobs temporary=''
+  is_uint "$holder" || return 0
+  start=$(get_start_time "$holder")
+  [[ -n $start ]] || return 0
+  # Each step is checked: errexit does not apply in a subshell tested by ||.
+  (
+    { mkdir -p "$directory" && [[ ! -L $directory ]]; } || exit 0
+    reap_job_records "$directory"
+    temporary=$(mktemp "$directory/.record.XXXXXX") || exit 0
+    if chmod "$GRM_FILE_MODE" "$temporary" && {
+      printf 'start %s\nqueued_at %s\n' "$start" "$(date +%s)"
+      job_record_line repository "${GITHUB_REPOSITORY:-}"
+      job_record_line workflow "${GITHUB_WORKFLOW:-}"
+      job_record_line job "${GITHUB_JOB:-}"
+      job_record_line run_id "${GITHUB_RUN_ID:-}"
+      job_record_line run_attempt "${GITHUB_RUN_ATTEMPT:-}"
+      job_record_line ref "${GITHUB_REF:-}"
+      job_record_line head_ref "${GITHUB_HEAD_REF:-}"
+      job_record_line sha "${GITHUB_SHA:-}"
+      job_record_line event "${GITHUB_EVENT_NAME:-}"
+      job_record_line actor "${GITHUB_ACTOR:-}"
+      job_record_line runner "${RUNNER_NAME:-}"
+      job_record_line server_url "${GITHUB_SERVER_URL:-}"
+      get_pull_request "${GITHUB_EVENT_PATH:-}"
+    } > "$temporary" &&
+      # Renamed over (GNU -T: never into a directory), so a symlink at the
+      # record path is replaced, never written through.
+      mv -fT "$temporary" "$directory/$holder"; then
+      exit 0
+    fi
+    rm -f "$temporary"
+  ) 2>/dev/null || true
+}
+
+# A field on one line, without control characters, at most 256 characters; an
+# empty value is left out.
+job_record_line() {
+  local value=${2//[[:cntrl:]]/ }
+  [[ -n $value ]] || return 0
+  printf '%s %s\n' "$1" "${value:0:256}"
+}
+
+# The pull request number and title as job record lines, from the event
+# payload the runner gives every job. Needs python3; without it, or for an
+# event that is not about a pull request, prints nothing.
+get_pull_request() {
+  local payload=$1 number title
+  [[ -n $payload && -r $payload ]] && command -v python3 > /dev/null || return 0
+  { IFS= read -r number && IFS= read -r -d '' title; } < <(timeout 5 python3 -I -c '
+import json, sys
+pull = json.load(open(sys.argv[1])).get("pull_request") or {}
+number, title = pull.get("number"), pull.get("title")
+if type(number) is int and isinstance(title, str):
+    sys.stdout.write("%d\n%s" % (number, title))
+' "$payload" 2>/dev/null) || true
+  is_uint "${number:-}" || return 0
+  job_record_line pull_request "$number"
+  job_record_line pull_request_title "$title"
+}
+
+# Drops the records of jobs whose process is gone: a completion hook that never
+# ran (runner killed, host rebooted) leaves one behind. So does a hook killed
+# mid-write: its temporary file goes once it is a minute old.
+reap_job_records() {
+  local file key start
+  find "$1" -maxdepth 1 -type f -name '.record.*' -mmin +1 -delete 2>/dev/null || true
+  for file in "$1"/[0-9]*; do
+    is_uint "${file##*/}" && [[ -f $file && ! -L $file ]] || continue
+    key='' start=''
+    { read -r key start < "$file"; } 2>/dev/null || true
+    if [[ $key != start ]] || ! is_alive "${file##*/}" "$start"; then rm -f "$file"; fi
+  done
+}
+
+remove_job_record() {
+  is_uint "$1" && [[ ! -L $GRM_STATE_DIR/jobs ]] || return 0
+  rm -f "$GRM_STATE_DIR/jobs/$1" 2>/dev/null || true
+}
+
 notice() { printf '::notice::%s\n' "$*"; }
 warning() { printf '::warning::%s\n' "$*" >&2; }
 error() { printf '::error::%s\n' "$*" >&2; }

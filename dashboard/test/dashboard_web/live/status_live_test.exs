@@ -78,6 +78,84 @@ defmodule DashboardWeb.StatusLiveTest do
       assert has_element?(view, "#parked", "org/tablet-app")
     end
 
+    test "every queued and running job opens its own detail view, without an event", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, ~s{#queue li:nth-child(1) button[popovertarget="job-42"]})
+      assert has_element?(view, ~s{#queue li:nth-child(2) button[popovertarget="job-43"]})
+      assert has_element?(view, ~s(#runner-web-app button[popovertarget="job-41"]))
+      assert has_element?(view, ~s(#slots button[popovertarget="job-38"]))
+      assert has_element?(view, ~s(#parked button[popovertarget="job-40"]))
+      refute has_element?(view, "#runner-docs-site button")
+
+      for ticket <- [38, 40, 41, 42, 43] do
+        assert has_element?(view, "#job-details #job-#{ticket}[popover][role=dialog]")
+      end
+    end
+
+    test "a pull request job's view links its run, pull request and commit", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#job-38 h2", "org/mobile-app")
+      assert has_element?(view, "#job-38", "Android")
+      assert has_element?(view, "#job-38", "e2e-android")
+
+      assert has_element?(
+               view,
+               ~s(#job-38 a[href="https://github.example.com/org/mobile-app/actions/runs/8123456789"][rel="noopener noreferrer"]),
+               "8123456789"
+             )
+
+      assert has_element?(
+               view,
+               ~s(#job-38 a[href="https://github.example.com/org/mobile-app/pull/57"]),
+               "#57"
+             )
+
+      assert has_element?(
+               view,
+               ~s(#job-38 h2 a[href="https://github.example.com/org/mobile-app"]),
+               "org/mobile-app"
+             )
+
+      assert has_element?(view, "#job-38", "Keep drafts while offline")
+      assert has_element?(view, "#job-38", "feature/offline-drafts")
+
+      assert has_element?(
+               view,
+               ~s(#job-38 a[href$="/commit/3f9a1c27d84be5a0c6f1e2d93b7a4c58e1d06b72"]),
+               "3f9a1c2"
+             )
+
+      assert has_element?(view, "#job-38", "dev-alex")
+      assert has_element?(view, "#job-38", "Running")
+      refute has_element?(view, "#job-38", "Waiting on")
+    end
+
+    test "waiting jobs say what they wait for and where they are in the queue", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#job-40", "Waiting for device")
+      assert has_element?(view, "#job-40", "the device lock, held by org/mobile-app")
+      assert has_element?(view, "#job-40", "none: push run")
+      assert has_element?(view, "#job-42", "slot units: 1 of 2 in the queue, needs 2 units")
+      assert has_element?(view, "#job-42", "not yet")
+      assert has_element?(view, "#job-40", "gave them back for the device")
+      assert has_element?(view, "#job-41", "none: workflow_dispatch run")
+      assert has_element?(view, "#job-41", "attempt 2")
+    end
+
+    test "a job its hooks recorded nothing about shows unknown, not an error", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#job-43 h2", "org/api")
+      assert has_element?(view, "#job-43 dd", "unknown")
+      refute has_element?(view, "#job-43 a[href*=actions]")
+      assert has_element?(view, "#job-43", "slot units: 2 of 2 in the queue")
+    end
+
     test "updates when the poller publishes a new picture", %{conn: conn, snapshot: snapshot} do
       {:ok, view, _html} = live(conn, ~p"/")
 
@@ -164,6 +242,13 @@ defmodule DashboardWeb.StatusLiveTest do
     {:ok, view, _html} = live(conn, ~p"/")
 
     assert has_element?(view, "#gate.gate-warn", "Heavy steps are held: load 7.20, limit 6")
+  end
+
+  test "the limits read as the host's defaults, which a step may override", %{conn: conn} do
+    start_poller(stub({:ok, Fixtures.status()}))
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#host", "These are the host's defaults")
   end
 
   test "jobs waiting with nothing broken is a waiting verdict", %{conn: conn} do

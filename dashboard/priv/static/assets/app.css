@@ -484,6 +484,7 @@ code {
 }
 
 .rows .row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -610,6 +611,152 @@ code {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
+}
+
+/* Job rows and the job detail drawer. The row's title is a button whose
+   ::after covers the whole row, so the row is one large target; the drawer
+   is a browser popover, so opening it needs no script and no server event. */
+
+.job-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.job-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.rows .row:has(.job-link):hover .job-link {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Overrides the browser's centred popover: a drawer at the right edge. */
+.drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(420px, 100vw);
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 16px 18px 24px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: -8px 0 24px rgba(16, 24, 40, 0.14);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.drawer::backdrop {
+  background: rgba(13, 16, 21, 0.45);
+}
+
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.drawer-heading {
+  min-width: 0;
+}
+
+.drawer-heading h2 {
+  margin: 2px 0 4px;
+  font-size: 1.15rem;
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+
+.drawer-close {
+  flex: none;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.drawer-facts {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.drawer-facts > div {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.drawer-facts > div:first-child {
+  border-top: 0;
+}
+
+.drawer-facts dt {
+  font-size: 0.85rem;
+}
+
+.drawer-facts a,
+.drawer-heading h2 a {
+  color: var(--accent);
+}
+
+.drawer-title {
+  display: block;
+  font-weight: 400;
+}
+
+.drawer-note {
+  margin-top: 14px;
+}
+
+/* A phone gets a sheet from the bottom edge instead. */
+@media (max-width: 599px) {
+  .drawer {
+    inset: auto 0 0 0;
+    width: 100%;
+    height: auto;
+    max-height: 85vh;
+    max-height: 85dvh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .drawer-facts > div {
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+  }
 }
 
 /* Host meters */

@@ -9,4 +9,5 @@ elif (($#)); then
   usage_error 'usage: job-started.sh [--holder PID]'
 fi
 [[ -n $holder ]] || usage_error 'job-started.sh must run as a runner job hook; use --holder for manual use'
+write_job_record "$holder"
 exec "$GRM_ROOT/bin/job-slots" acquire --holder "$holder" --units "${GRM_JOB_UNITS:-1}" --label "${GITHUB_REPOSITORY:-job}"

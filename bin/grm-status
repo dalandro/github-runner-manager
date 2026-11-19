@@ -110,11 +110,53 @@ render_workers() {
   done <<< "$workers"
 }
 
+# A whole number (no fraction, unlike json_number), or null.
+json_integer() {
+  if [[ ${1:-} =~ ^(0|[1-9][0-9]{0,17})$ ]]; then printf '%s' "$1"; else printf 'null'; fi
+}
+
+# JSON string, or null for an empty value.
+json_optional_string() {
+  if [[ -n ${1:-} ]]; then json_string "$1"; else printf 'null'; fi
+}
+
+# The job hook's record for a slot holder (docs/job-slots.md#job-records) as a
+# JSON object. A field the record lacks is null; so is every field when there
+# is no record, or the record belongs to an earlier process with the same pid.
+render_job() {
+  local process=$1 start=$2 directory=$GRM_STATE_DIR/jobs line key value
+  local -a lines=()
+  local -A fields=()
+  # Read once (32 lines, 16 KiB), so the start check and the fields come from
+  # the same file even if a hook replaces it meanwhile.
+  if [[ ! -L $directory && -f $directory/$process && ! -L $directory/$process ]]; then
+    mapfile -t -n 32 lines < <(head -c 16384 "$directory/$process" 2>/dev/null) || lines=()
+  fi
+  if [[ ${lines[0]:-} == "start $start" ]]; then
+    for line in "${lines[@]:1}"; do
+      read -r key value <<< "$line" || true
+      case $key in
+        queued_at|repository|workflow|job|run_id|run_attempt|ref|head_ref|sha|event|actor|runner|server_url|pull_request|pull_request_title)
+          fields[$key]=${value:0:256};;
+      esac
+    done
+  fi
+  printf '{"repository": %s, "workflow": %s, "job": %s, "run_id": %s, "run_attempt": %s, "ref": %s, "head_ref": %s, "sha": %s, "event": %s, "actor": %s, "runner": %s, "server_url": %s, "pull_request": %s, "pull_request_title": %s, "queued_at": %s}' \
+    "$(json_optional_string "${fields[repository]:-}")" "$(json_optional_string "${fields[workflow]:-}")" \
+    "$(json_optional_string "${fields[job]:-}")" "$(json_optional_string "${fields[run_id]:-}")" \
+    "$(json_integer "${fields[run_attempt]:-}")" "$(json_optional_string "${fields[ref]:-}")" \
+    "$(json_optional_string "${fields[head_ref]:-}")" "$(json_optional_string "${fields[sha]:-}")" \
+    "$(json_optional_string "${fields[event]:-}")" "$(json_optional_string "${fields[actor]:-}")" \
+    "$(json_optional_string "${fields[runner]:-}")" "$(json_optional_string "${fields[server_url]:-}")" \
+    "$(json_integer "${fields[pull_request]:-}")" "$(json_optional_string "${fields[pull_request_title]:-}")" \
+    "$(json_integer "${fields[queued_at]:-}")"
+}
+
 render_slots() {
-  local kind ticket process waiter waiter_start weight name since unparking used=0 separator='' rows='' raw
+  local kind ticket process start waiter waiter_start weight name since unparking used=0 separator='' rows='' raw
   # A failure (such as a lock that stays held) must not read as an empty gate.
   raw=$("$GRM_ROOT/bin/job-slots" status --raw) || return
-  while read -r kind ticket process _ waiter waiter_start weight name since; do
+  while read -r kind ticket process start waiter waiter_start weight name since; do
     [[ -n $kind ]] || continue
     [[ $kind != next ]] || continue
     # job-slots validates records; checked again before arithmetic all the same.
@@ -123,9 +165,10 @@ render_slots() {
     unparking=false
     if [[ $kind == parked ]] && is_alive "$waiter" "$waiter_start"; then unparking=true; fi
     if [[ ${since:-0} == 0 ]]; then since=null; fi
-    rows+=$(printf '%s\n      {"kind": %s, "ticket": %s, "holder_pid": %s, "units": %s, "label": %s, "since": %s, "unparking": %s}' \
+    rows+=$(printf '%s\n      {"kind": %s, "ticket": %s, "holder_pid": %s, "units": %s, "label": %s, "since": %s, "unparking": %s,\n       "job": %s}' \
       "$separator" "$(json_string "$kind")" "$(json_number "$ticket")" "$(json_number "$process")" \
-      "$(json_number "$weight")" "$(json_string "$name")" "$(json_number "$since")" "$unparking")
+      "$(json_number "$weight")" "$(json_string "$name")" "$(json_number "$since")" "$unparking" \
+      "$(render_job "$process" "$start")")
     separator=,
   done <<< "$raw"
   printf '{\n    "capacity": %s, "used": %s, "max_wait_seconds": %s,\n    "records": [%s\n    ]\n  }' \

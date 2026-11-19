@@ -5,8 +5,10 @@ defmodule DashboardWeb.StatusLive do
   `Dashboard.Snapshot`, updated by snapshot and read-time PubSub messages,
   and `now`, a one-second clock so waits and hold times count up between readings.
 
-  Everything shown is derived from those two in `Dashboard.Overview`; the
-  page keeps no state of its own and handles no events from the browser.
+  Everything shown is derived from those two in `Dashboard.Overview` and
+  `Dashboard.JobDetails`; the page keeps no state of its own and handles no
+  events from the browser. A job's detail view is rendered with the board and
+  opened by the browser itself (a popover), so opening one sends nothing.
   """
 
   use DashboardWeb, :live_view
@@ -94,6 +96,15 @@ defmodule DashboardWeb.StatusLive do
           </div>
         </div>
         <.quiet_group status={@snapshot.status} />
+
+        <div id="job-details">
+          <.job_details
+            :for={record <- Overview.jobs(@snapshot.status.slots)}
+            record={record}
+            status={@snapshot.status}
+            now={@now}
+          />
+        </div>
       </main>
 
       <.no_reading :if={!@snapshot.status} snapshot={@snapshot} />
