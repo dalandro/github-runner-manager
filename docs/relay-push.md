@@ -57,6 +57,7 @@ GRM_RELAY_URL=http://127.0.0.1:4391/ingest bin/grm-relay-push --once
 ## Running it permanently
 
 `systemd/grm-relay-push.service.in` is a user unit template: lowest CPU and
-I/O priority, 64 MB memory cap, restarted a minute after a failure. Set the
+I/O priority, 64 MB memory cap (where the user manager has the memory
+controller, as on most current distributions), restarted a minute after a failure. Set the
 URL in the config and the token file first, check with `--once`, then follow
 the steps in the template's header. The token and URL never go in the unit.
