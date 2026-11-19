@@ -86,6 +86,21 @@ defmodule DashboardWeb.IngestControllerTest do
       assert Inbox.latest(Inbox) == nil
     end
 
+    test "a refusal repeats nothing that was sent", %{conn: conn} do
+      marker = "pushed-marker-" <> String.duplicate("x", 200)
+
+      for body <- [
+            Jason.encode!(%{"schema" => marker}),
+            "#{marker} is not json",
+            Fixtures.document() |> put_in(["slots", "capacity"], marker) |> Jason.encode!()
+          ] do
+        conn = push_document(conn, body)
+
+        assert json_response(conn, 422)
+        refute conn.resp_body =~ "pushed-marker"
+      end
+    end
+
     test "refuses a document older than the last one accepted", %{conn: conn} do
       newer =
         Fixtures.document()

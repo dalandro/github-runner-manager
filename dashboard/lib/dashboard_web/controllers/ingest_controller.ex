@@ -63,7 +63,15 @@ defmodule DashboardWeb.IngestController do
   defp refuse(conn, :older),
     do: reply(conn, 409, "document is older than the last accepted one")
 
-  defp refuse(conn, error), do: reply(conn, 422, Dashboard.Source.describe_error(error))
+  defp refuse(conn, {:invalid_json, _message}),
+    do: reply(conn, 422, "document is not valid JSON")
+
+  # Field names come from the parser, never from the document.
+  defp refuse(conn, {:invalid_field, field}),
+    do: reply(conn, 422, "document has an unexpected #{field} field")
+
+  defp refuse(conn, {:unsupported_schema, _version}),
+    do: reply(conn, 422, "document is not schema 1")
 
   defp reply(conn, status, error), do: conn |> put_status(status) |> json(%{error: error})
 end
