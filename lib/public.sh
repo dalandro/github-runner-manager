@@ -5,8 +5,8 @@
 #
 # Every field `grm-status --json` prints has a class here. test/status-json.bats
 # fails on a field without one, and grm-status refuses to print it in public.
-#   keep     sent as is: numbers, states, times, process ids and names
-#   alias    a stand-in (runner-1, repo-2, other); the real value with
+#   keep     sent as is: numbers, states, times, process ids
+#   alias    a stand-in (runner-1, repo-2, process, other); the real value with
 #            GRM_RELAY_SHARE_DETAILS=1
 #   share    null, or "" where the schema needs a string; the real value with
 #            GRM_RELAY_SHARE_DETAILS=1
@@ -39,8 +39,8 @@ declare -grA PUBLIC_FIELDS=(
   [device_lock.holder.since]=keep [device_lock.holder.alive]=keep
   [device_lock.watchdog.min_age_seconds]=keep [device_lock.watchdog.kill]=keep
   [device_lock.watchdog.stale.pid]=keep [device_lock.watchdog.stale.fd]=keep
-  [device_lock.watchdog.stale.age_seconds]=keep [device_lock.watchdog.stale.command]=keep
-  [events.at]=keep [events.kind]=keep [events.subject]=alias [events.detail]=numeric
+  [device_lock.watchdog.stale.age_seconds]=keep [device_lock.watchdog.stale.command]=alias
+  [events.at]=keep [events.kind]=alias [events.subject]=alias [events.detail]=numeric
 )
 
 # Words the gates use in event details (docs/events.md); with numbers, the
@@ -51,6 +51,20 @@ declare -grA PUBLIC_DETAIL_WORDS=(
   [admitted]=1 [after]=1 [max]=1 [wait]=1 [used]=1 ['line(s)']=1 [dropped]=1
   [from]=1 [state]=1 [file]=1 [pid]=1 [age]=1 [fd]=1 [sent]=1 [TERM]=1 [by]=1
   [watchdog]=1 [held]=1 [busy]=1 [gave]=1 [up]=1 [waiter]=1 [gone]=1
+)
+
+# Process names that may leave as they are: the device tools a stale lock
+# holder usually is. Any other name may be a script's and becomes "process".
+declare -grA PUBLIC_PROCESS_NAMES=(
+  [adb]=1 [emulator]=1 [qemu-system-x86]=1 [qemu-system-aar]=1
+)
+
+# Event kinds the gates write (docs/events.md). Anything else in the log is
+# not theirs and becomes "other".
+declare -grA PUBLIC_EVENT_KINDS=(
+  [queue]=1 [admit]=1 [overcommit]=1 [park]=1 [unpark]=1 [release]=1 [reap]=1
+  [corrupt]=1 [lock-wait]=1 [lock-acquire]=1 [lock-release]=1 [lock-timeout]=1
+  [stale]=1 [kill]=1
 )
 
 # Set to 1 by `grm-status --json --public`; public_field does nothing otherwise.
@@ -129,11 +143,23 @@ public_directory_alias() {
   printf 'other'
 }
 
+# A known device tool's name, else "process".
+public_process_alias() {
+  [[ -n $1 ]] || return 0
+  if [[ -n ${PUBLIC_PROCESS_NAMES[$1]:-} ]]; then printf '%s' "$1"; else printf 'process'; fi
+}
+
+# An event kind the gates write, else "other".
+public_event_kind() {
+  if [[ -n ${PUBLIC_EVENT_KINDS[$1]:-} ]]; then printf '%s' "$1"; else printf 'other'; fi
+}
+
 # An event subject is a slot label or repository, except the process name of
 # a stale holder and the fixed word of a corrupt state file.
 public_subject() {
   case $1 in
-    stale|kill|corrupt) printf '%s' "$2";;
+    stale|kill) public_process_alias "$2";;
+    corrupt) printf 'slots';;
     *) public_repository_alias "$2";;
   esac
 }

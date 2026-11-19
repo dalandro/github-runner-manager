@@ -233,7 +233,7 @@ render_device_lock() {
       public_field stale_process device_lock.watchdog.stale.pid
       public_field number device_lock.watchdog.stale.fd
       public_field age device_lock.watchdog.stale.age_seconds
-      public_field comm device_lock.watchdog.stale.command
+      public_field comm device_lock.watchdog.stale.command public_process_alias
       stale+=$(printf '%s\n      {"pid": %s, "fd": %s, "age_seconds": %s, "command": %s}' \
         "$separator" "$stale_process" "$number" "$age" "$(json_string "$comm")")
       separator=, stale_end=$'\n    '
@@ -259,7 +259,7 @@ render_events() {
     public_field at events.at
     public_field subject events.subject public_subject "$kind"
     public_field detail events.detail public_detail
-    public_field kind events.kind
+    public_field kind events.kind public_event_kind
     printf '%s\n    {"at": %s, "kind": %s, "subject": %s, "detail": %s}' \
       "$separator" "$at" "$(json_string "$kind")" "$(json_string "$subject")" "$(json_string "$detail")"
     separator=,

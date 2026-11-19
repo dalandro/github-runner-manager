@@ -40,8 +40,25 @@ CONFIG
   [ "$(in_public public_subject admit org/tablet-app)" = repo-2 ]
   [ "$(in_public public_subject lock-acquire org/api)" = other ]
   [ "$(in_public public_subject stale adb)" = adb ]
-  [ "$(in_public public_subject kill adb)" = adb ]
+  [ "$(in_public public_subject kill deploy-tablet-a)" = process ]
   [ "$(in_public public_subject corrupt slots)" = slots ]
+  [ "$(in_public public_subject corrupt org/tablet-app)" = slots ]
+}
+
+@test "a process name passes only when it is a known device tool" {
+  for name in adb emulator qemu-system-x86 qemu-system-aar; do
+    [ "$(in_public public_process_alias "$name")" = "$name" ]
+  done
+  [ "$(in_public public_process_alias deploy-tablet-a)" = process ]
+  [ "$(in_public public_process_alias '')" = '' ]
+}
+
+@test "an event kind passes only when the gates write it (docs/events.md)" {
+  for kind in queue admit overcommit park unpark release reap corrupt \
+    lock-wait lock-acquire lock-release lock-timeout stale kill; do
+    [ "$(in_public public_event_kind "$kind")" = "$kind" ]
+  done
+  [ "$(in_public public_event_kind tablet-app-deploy)" = other ]
 }
 
 @test "event detail passes only in the numeric forms the gates write" {
