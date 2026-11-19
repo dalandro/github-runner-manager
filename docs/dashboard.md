@@ -238,6 +238,9 @@ the first step towards viewing the board from a phone without a private
 network: the host sends its `grm-status --json` document out, and the relay,
 which can never reach the host, serves the board from the last one it got.
 For now it listens on 127.0.0.1 like every other mode; nothing here is public.
+On the host, [`bin/grm-relay-push`](relay-push.md) sends the
+`grm-status --json --public` document; the example below pushes the demo
+document by hand.
 
 ```bash
 token=$(openssl rand -hex 32)
