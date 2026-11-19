@@ -13,10 +13,10 @@ defmodule DashboardWeb.Router do
   end
 
   # Pushes from a runner host, in relay mode only (Dashboard.Relay): no
-  # session, no CSRF token, no HTML. The controller checks the push token.
+  # session, no CSRF token, no HTML. The controller checks the push token and
+  # always answers JSON, whatever the client accepts.
   pipeline :ingest do
     plug :relay_only
-    plug :accepts, ["json"]
   end
 
   scope "/", DashboardWeb do

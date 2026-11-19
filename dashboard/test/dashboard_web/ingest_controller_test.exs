@@ -97,6 +97,12 @@ defmodule DashboardWeb.IngestControllerTest do
       assert Inbox.latest(Inbox).status.generated_at == Fixtures.now() + 60
     end
 
+    test "answers JSON to a client that asks for HTML", %{conn: conn} do
+      conn = conn |> put_req_header("accept", "text/html") |> push_document("not json")
+
+      assert json_response(conn, 422)["error"]
+    end
+
     test "sets no cookie", %{conn: conn} do
       conn = push_document(conn, demo_document())
 
