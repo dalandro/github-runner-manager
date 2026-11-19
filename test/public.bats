@@ -61,6 +61,16 @@ CONFIG
   [ "$(in_public public_event_kind tablet-app-deploy)" = other ]
 }
 
+@test "public_field works for a caller variable named like its own locals" {
+  path=/srv/runners/demo public_value=/srv/runners/demo bash -c '
+    source "$GRM_ROOT/lib/common.sh"; source "$GRM_ROOT/lib/public.sh"; public_output=1
+    path=/srv/runners/demo public_value=/srv/runners/demo
+    public_field path workers.directory
+    public_field public_value workers.directory
+    printf "%s|%s" "$path" "$public_value"' > "$BATS_TEST_TMPDIR/out"
+  [ "$(cat "$BATS_TEST_TMPDIR/out")" = '|' ]
+}
+
 @test "event detail passes only in the numeric forms the gates write" {
   for detail in \
     'ticket 41, 2 units after 0s; used 5/6' \

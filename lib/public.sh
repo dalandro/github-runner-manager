@@ -74,19 +74,21 @@ public_output=${public_output:-0}
 # of the document, as the field's class says. The stand-in is the output of
 # the remaining arguments run with the value appended, or empty without them.
 # A field without a class stops the output (exit 70): nothing unclassified
-# leaves the machine.
+# leaves the machine. Locals carry a prefix no caller's variable has, so the
+# reference never resolves to one of them instead.
 public_field() {
   ((public_output)) || return 0
-  local -n public_value=$1
-  local path=$2
+  [[ $1 != _public_field_* ]] || { printf 'grm-status: public_field cannot filter %s\n' "$1" >&2; exit 70; }
+  local -n _public_field_value=$1
+  local _public_field_path=$2
   shift 2
-  case ${PUBLIC_FIELDS[$path]:-} in
+  case ${PUBLIC_FIELDS[$_public_field_path]:-} in
     keep) return 0;;
     alias|share|numeric) [[ ${GRM_RELAY_SHARE_DETAILS:-0} != 1 ]] || return 0;;
     never) ;;
-    *) printf 'grm-status: field %s has no public class (lib/public.sh)\n' "$path" >&2; exit 70;;
+    *) printf 'grm-status: field %s has no public class (lib/public.sh)\n' "$_public_field_path" >&2; exit 70;;
   esac
-  if (($#)); then public_value=$("$@" "$public_value"); else public_value=''; fi
+  if (($#)); then _public_field_value=$("$@" "$_public_field_value"); else _public_field_value=''; fi
 }
 
 # "path class" for every classified field.
