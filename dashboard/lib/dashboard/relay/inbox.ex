@@ -14,10 +14,7 @@ defmodule Dashboard.Relay.Inbox do
   @doc "Options: `:name` (default `#{inspect(__MODULE__)}`; `nil` for none)."
   @spec start_link(keyword()) :: Agent.on_start()
   def start_link(options) do
-    case Keyword.get(options, :name, __MODULE__) do
-      nil -> Agent.start_link(fn -> nil end)
-      name -> Agent.start_link(fn -> nil end, name: name)
-    end
+    Agent.start_link(fn -> nil end, name: Keyword.get(options, :name, __MODULE__))
   end
 
   @doc "The latest accepted push, or `nil` before the first."
