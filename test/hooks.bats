@@ -103,3 +103,32 @@ RECORD
   start_pull_request_job
   has_record holding "$holder"
 }
+
+@test "job records never follow a symlinked jobs directory" {
+  start_holder
+  mkdir -p "$GRM_STATE_DIR" "$BATS_TEST_TMPDIR/elsewhere"
+  : > "$BATS_TEST_TMPDIR/elsewhere/1"
+  ln -s "$BATS_TEST_TMPDIR/elsewhere" "$GRM_STATE_DIR/jobs"
+  start_pull_request_job
+  has_record holding "$holder"
+  [ "$(ls -A "$BATS_TEST_TMPDIR/elsewhere")" = 1 ]
+  "$GRM_ROOT/hooks/job-completed.sh" --holder 1
+  [ -f "$BATS_TEST_TMPDIR/elsewhere/1" ]
+}
+
+@test "a directory at a record's path is left alone and leaves no partial record" {
+  start_holder
+  mkdir -p "$GRM_STATE_DIR/jobs/$holder"
+  start_pull_request_job
+  has_record holding "$holder"
+  [ -z "$(ls -A "$GRM_STATE_DIR/jobs/$holder")" ]
+  [ -z "$(find "$GRM_STATE_DIR/jobs" -maxdepth 1 -name '.record.*')" ]
+}
+
+@test "reaping only touches records named by a pid" {
+  start_holder
+  mkdir -p "$GRM_STATE_DIR/jobs"
+  : > "$GRM_STATE_DIR/jobs/1notapid"
+  start_pull_request_job
+  [ -f "$GRM_STATE_DIR/jobs/1notapid" ]
+}

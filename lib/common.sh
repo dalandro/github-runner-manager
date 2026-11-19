@@ -132,16 +132,16 @@ log_event() {
 # that process so a reused pid never inherits a record. Best effort, like the
 # event log: a record that cannot be written never fails the hook.
 write_job_record() {
-  local holder=$1 start directory=$GRM_STATE_DIR/jobs temporary
+  local holder=$1 start directory=$GRM_STATE_DIR/jobs temporary=''
   is_uint "$holder" || return 0
   start=$(get_start_time "$holder")
   [[ -n $start ]] || return 0
+  # Each step is checked: errexit does not apply in a subshell tested by ||.
   (
-    mkdir -p "$directory"
+    { mkdir -p "$directory" && [[ ! -L $directory ]]; } || exit 0
     reap_job_records "$directory"
-    temporary=$(mktemp "$directory/.record.XXXXXX")
-    chmod "$GRM_FILE_MODE" "$temporary"
-    {
+    temporary=$(mktemp "$directory/.record.XXXXXX") || exit 0
+    if chmod "$GRM_FILE_MODE" "$temporary" && {
       printf 'start %s\nqueued_at %s\n' "$start" "$(date +%s)"
       job_record_line repository "${GITHUB_REPOSITORY:-}"
       job_record_line workflow "${GITHUB_WORKFLOW:-}"
@@ -156,9 +156,13 @@ write_job_record() {
       job_record_line runner "${RUNNER_NAME:-}"
       job_record_line server_url "${GITHUB_SERVER_URL:-}"
       get_pull_request "${GITHUB_EVENT_PATH:-}"
-    } > "$temporary"
-    # Renamed over, so a symlink at the record path is replaced, never written through.
-    mv -f "$temporary" "$directory/$holder"
+    } > "$temporary" &&
+      # Renamed over (-T: never into a directory), so a symlink at the record
+      # path is replaced, never written through.
+      mv -fT "$temporary" "$directory/$holder"; then
+      exit 0
+    fi
+    rm -f "$temporary"
   ) 2>/dev/null || true
 }
 
@@ -193,7 +197,7 @@ if type(number) is int and isinstance(title, str):
 reap_job_records() {
   local file key start
   for file in "$1"/[0-9]*; do
-    [[ -f $file && ! -L $file ]] || continue
+    is_uint "${file##*/}" && [[ -f $file && ! -L $file ]] || continue
     key='' start=''
     { read -r key start < "$file"; } 2>/dev/null || true
     if [[ $key != start ]] || ! is_alive "${file##*/}" "$start"; then rm -f "$file"; fi
@@ -201,7 +205,7 @@ reap_job_records() {
 }
 
 remove_job_record() {
-  is_uint "$1" || return 0
+  is_uint "$1" && [[ ! -L $GRM_STATE_DIR/jobs ]] || return 0
   rm -f "$GRM_STATE_DIR/jobs/$1" 2>/dev/null || true
 }
 
