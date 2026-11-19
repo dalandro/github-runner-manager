@@ -27,6 +27,7 @@ wait_until_ready() { # <server pid>
     kill -0 "$1"
     sleep 1
   done
+  return 1
 }
 
 @test "dashboard serves demo data on loopback only and stops on TERM" {
@@ -133,7 +134,9 @@ wait_until_ready() { # <server pid>
   # The page reads the relay's inbox every second.
   wait_for page_has 'org/mobile-app'
   page_has 'cannot reach the host'
-  ! grep -qF -- "$token" "$BATS_TEST_TMPDIR/server.log"
+  # Mid-test, `! cmd` cannot fail a test; check the status instead.
+  run grep -qF -- "$token" "$BATS_TEST_TMPDIR/server.log"
+  [ "$status" -eq 1 ]
 
   kill -TERM "$server"
   wait "$server"
