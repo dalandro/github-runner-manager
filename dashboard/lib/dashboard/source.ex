@@ -4,7 +4,11 @@ defmodule Dashboard.Source do
   pair and calls `fetch/1`; it never knows whether the reading is real.
 
   Implementations: `Dashboard.Source.Command` (the host's own
-  `grm-status --json`) and `Dashboard.Source.Demo` (the bundled sample).
+  `grm-status --json`), `Dashboard.Source.Demo` (the bundled sample) and
+  `Dashboard.Source.Relay` (what a runner host last pushed).
+
+  A reading is `{:ok, status}`, taken now, or `{:ok, status, read_at}` when
+  the source knows it was taken earlier (a push, at its arrival).
   """
 
   alias Dashboard.Status
@@ -16,14 +20,22 @@ defmodule Dashboard.Source do
           | {:unreadable, String.t()}
           | {:crashed, String.t()}
           | :timeout
+          | :no_push_yet
+          | {:no_push, non_neg_integer()}
 
-  @callback fetch(options :: keyword()) :: {:ok, Status.t()} | {:error, error()}
+  @type result ::
+          {:ok, Status.t()} | {:ok, Status.t(), non_neg_integer()} | {:error, error()}
+
+  @callback fetch(options :: keyword()) :: result()
 
   @doc "Whether the source serves sample data, so the page can say so."
   @callback demo?() :: boolean()
 
+  @doc "Whether the source serves what a runner host pushed, so the page can say so."
+  @callback relay?() :: boolean()
+
   @doc "One reading from the given source."
-  @spec fetch(t()) :: {:ok, Status.t()} | {:error, error()}
+  @spec fetch(t()) :: result()
   def fetch({module, options}), do: module.fetch(options)
 
   @doc "A sentence for the page; the full reason belongs in the log."
@@ -42,4 +54,11 @@ defmodule Dashboard.Source do
 
   def describe_error({:unsupported_schema, version}),
     do: "the status output uses schema #{inspect(version)}, this dashboard reads schema 1"
+
+  def describe_error(:no_push_yet), do: "the runner host has not pushed its status yet"
+
+  def describe_error({:no_push, _received_at}),
+    do:
+      "the runner host has not pushed since; it may be off, asleep or offline, " <>
+        "and the relay cannot reach it"
 end

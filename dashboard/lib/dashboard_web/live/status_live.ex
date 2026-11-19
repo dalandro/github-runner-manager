@@ -110,9 +110,14 @@ defmodule DashboardWeb.StatusLive do
       <.no_reading :if={!@snapshot.status} snapshot={@snapshot} />
 
       <footer class="page-footer">
-        <p>
+        <p :if={!@snapshot.relay}>
           Read-only view of <code>grm-status --json</code>. Listens on this machine only: never
           expose this port; look from elsewhere through an SSH tunnel or a private-network proxy.
+        </p>
+        <p :if={@snapshot.relay} id="relay-footer">
+          Read-only view of the <code>grm-status --json</code>
+          document the runner host last pushed; this page cannot reach the host.
+          Listens on this machine only.
         </p>
       </footer>
     </div>

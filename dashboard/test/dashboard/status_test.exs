@@ -123,6 +123,30 @@ defmodule Dashboard.StatusTest do
                |> Status.parse()
     end
 
+    test "rejects numbers no host reports, which the page could not do arithmetic on" do
+      for {path, value} <- [
+            {["slots", "capacity"], Integer.pow(2, 53)},
+            {["host", "memory_available_mb"], Integer.pow(10, 400)},
+            {["host", "load_1m"], 1.0e308},
+            {["host", "load_1m"], -0.5},
+            {["host", "max_load"], 1.0e-300},
+            {["host", "max_load"], 2_000_000}
+          ] do
+        field = List.last(path)
+
+        assert {:error, {:invalid_field, ^field}} =
+                 Fixtures.document() |> put_in(path, value) |> Status.parse(),
+               "accepted #{inspect(value)} for #{field}"
+      end
+
+      assert {:ok, _status} =
+               Fixtures.document()
+               |> put_in(["host", "load_1m"], 0)
+               |> put_in(["host", "max_load"], 0.01)
+               |> put_in(["slots", "capacity"], Integer.pow(2, 53) - 1)
+               |> Status.parse()
+    end
+
     test "rejects kinds and states outside the schema instead of making atoms" do
       assert {:error, {:invalid_field, "slots.records.kind"}} =
                Fixtures.document()

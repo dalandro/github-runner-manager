@@ -66,7 +66,7 @@ defmodule Dashboard.Poller do
       pubsub: Keyword.get(options, :pubsub, Dashboard.PubSub),
       topic: Keyword.get(options, :topic, @default_topic),
       task_supervisor: Keyword.get(options, :task_supervisor, Dashboard.TaskSupervisor),
-      snapshot: %Snapshot{demo: module.demo?()},
+      snapshot: %Snapshot{demo: module.demo?(), relay: module.relay?()},
       failures: 0,
       task: nil
     }
@@ -121,15 +121,20 @@ defmodule Dashboard.Poller do
         {:ok, status} ->
           {Snapshot.succeed(state.snapshot, status, now), 0}
 
+        # A pushed reading was taken when it arrived, not when it was polled.
+        {:ok, status, read_at} ->
+          {Snapshot.succeed(state.snapshot, status, read_at), 0}
+
         {:error, error} ->
           if state.failures == 0, do: Logger.warning("status read failed: #{inspect(error)}")
           {Snapshot.fail(state.snapshot, error, now), state.failures + 1}
       end
 
     # Every page shares the state change time; load and memory still update.
+    # Only a good reading changes the picture, so it changed when it was read.
     snapshot =
       if Snapshot.state_changed?(state.snapshot, snapshot) do
-        Snapshot.mark_changed(snapshot, now)
+        Snapshot.mark_changed(snapshot, snapshot.fetched_at)
       else
         snapshot
       end

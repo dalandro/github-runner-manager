@@ -199,3 +199,31 @@ SCRIPT
   grep -Ex 'MemoryMax=[0-9]+M' "$unit"
   grep -Ex 'TasksMax=[0-9]+' "$unit"
 }
+
+@test "dashboard --relay shows pushes instead of reading this host" {
+  setup_dashboard
+  GRM_CONFIG="$BATS_TEST_TMPDIR/missing.env" GRM_RELAY_PUSH_TOKENS=example-push-token-of-32-characters \
+    run "$GRM_ROOT/bin/grm-dashboard" --relay --port 4391
+  [ "$status" -eq 0 ]
+  [[ $output == *'source=relay '* ]]
+  [[ $output == *'http://127.0.0.1:4391 (loopback only'* ]]
+  [[ $output == *'relay mode: the host pushes to http://127.0.0.1:4391/ingest'* ]]
+  [[ $output != *'defaults'* ]]
+  [[ $output != *'example-push-token'* ]]
+}
+
+@test "dashboard --relay needs push tokens and cannot be combined with --demo" {
+  setup_dashboard
+  local tokens
+  for tokens in '' ' , '; do
+    GRM_RELAY_PUSH_TOKENS=$tokens run "$GRM_ROOT/bin/grm-dashboard" --relay
+    [ "$status" -eq 2 ]
+    [[ $output == *'GRM_RELAY_PUSH_TOKENS'* && $output != *'mix '* ]]
+  done
+  unset GRM_RELAY_PUSH_TOKENS
+  run "$GRM_ROOT/bin/grm-dashboard" --relay
+  [ "$status" -eq 2 ]
+  GRM_RELAY_PUSH_TOKENS=example-push-token-of-32-characters run "$GRM_ROOT/bin/grm-dashboard" --demo --relay
+  [ "$status" -eq 2 ]
+  [[ $output != *'mix '* ]]
+}

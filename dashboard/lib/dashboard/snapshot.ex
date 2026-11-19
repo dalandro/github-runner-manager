@@ -12,7 +12,8 @@ defmodule Dashboard.Snapshot do
             changed_at: nil,
             error: nil,
             stale_since: nil,
-            demo: false
+            demo: false,
+            relay: false
 
   @type t :: %__MODULE__{
           status: Status.t() | nil,
@@ -20,7 +21,8 @@ defmodule Dashboard.Snapshot do
           changed_at: non_neg_integer() | nil,
           error: Source.error() | nil,
           stale_since: non_neg_integer() | nil,
-          demo: boolean()
+          demo: boolean(),
+          relay: boolean()
         }
 
   @doc "Records a successful reading taken at `now` (epoch seconds)."

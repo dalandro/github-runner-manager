@@ -87,7 +87,7 @@ defmodule DashboardWeb.StatusComponents do
           headline: "Stale data: showing the last good reading",
           details: [
             "It is #{Overview.format_duration(Overview.elapsed(assigns.snapshot.fetched_at, assigns.now))} old",
-            "Reading failed: #{Source.describe_error(assigns.snapshot.error)}. Still retrying, less often."
+            failure_detail(assigns.snapshot)
           ]
         }
       else
@@ -112,6 +112,13 @@ defmodule DashboardWeb.StatusComponents do
     """
   end
 
+  # A relay does not retry anything: it waits for the host's next push.
+  defp failure_detail(%Snapshot{relay: true, error: error}),
+    do: "Waiting: #{Source.describe_error(error)}."
+
+  defp failure_detail(%Snapshot{error: error}),
+    do: "Reading failed: #{Source.describe_error(error)}. Still retrying, less often."
+
   defp verdict_icon(:clear), do: :ok
   defp verdict_icon(:waiting), do: :waiting
   defp verdict_icon(:attention), do: :problem
@@ -124,6 +131,21 @@ defmodule DashboardWeb.StatusComponents do
       <.icon name={:waiting} />
       <h2>Reading the host…</h2>
       <p class="muted">The first reading has not arrived yet.</p>
+    </main>
+    """
+  end
+
+  def no_reading(%{snapshot: %Snapshot{relay: true}} = assigns) do
+    ~H"""
+    <main class="empty-page" id="no-reading">
+      <.icon name={:waiting} />
+      <h2>No report yet</h2>
+      <p>Waiting: {Source.describe_error(@snapshot.error)}.</p>
+      <p class="muted">
+        The host sends its <code>grm-status --json</code>
+        document to <code>POST /ingest</code>
+        with a push token; this page cannot reach the host.
+      </p>
     </main>
     """
   end

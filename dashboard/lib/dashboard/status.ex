@@ -404,9 +404,17 @@ defmodule Dashboard.Status do
 
   defp optional_string!(map, key), do: fetch!(map, key, &(is_nil(&1) or is_binary(&1)))
 
-  defp optional_number!(map, key), do: fetch!(map, key, &(is_nil(&1) or is_number(&1)))
+  defp optional_number!(map, key), do: fetch!(map, key, &(is_nil(&1) or reading?(&1)))
 
-  defp non_negative_integer?(value), do: is_integer(value) and value >= 0
+  # Bounds no host reaches, so the page's arithmetic cannot overflow on a
+  # document from elsewhere (a relay push): integers stay exact in JSON, and
+  # load figures are 0 or between 0.01 and a million.
+  @max_integer Integer.pow(2, 53) - 1
+
+  defp non_negative_integer?(value), do: is_integer(value) and value in 0..@max_integer//1
+
+  defp reading?(value),
+    do: is_number(value) and (value == 0 or (value >= 0.01 and value <= 1_000_000))
 
   defp fetch!(map, key, valid?) do
     case Map.fetch(map, key) do

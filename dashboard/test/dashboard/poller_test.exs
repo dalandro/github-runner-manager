@@ -82,6 +82,16 @@ defmodule Dashboard.PollerTest do
     assert_receive {:snapshot, %Snapshot{status: ^status, error: nil, stale_since: nil}}
   end
 
+  test "a pushed reading was read when it arrived, not when it was polled", context do
+    status = Fixtures.status()
+    start_poller(context, [{:ok, status, 1_000}, {:error, {:no_push, 1_000}}])
+
+    assert_receive {:snapshot, %Snapshot{status: ^status, fetched_at: 1_000, changed_at: 1_000}}
+
+    # Stale since the push stopped, not since the poll that noticed.
+    assert_receive {:snapshot, %Snapshot{error: {:no_push, 1_000}, stale_since: 1_000}}
+  end
+
   test "a failure before any reading is published without data", context do
     start_poller(context, [{:error, {:exit_status, 2, "boom"}}])
 
@@ -114,6 +124,9 @@ defmodule Dashboard.PollerTest do
     def demo?, do: false
 
     @impl true
+    def relay?, do: false
+
+    @impl true
     def fetch(_options), do: Process.sleep(:infinity)
   end
 
@@ -142,7 +155,21 @@ defmodule Dashboard.PollerTest do
         {Poller, source: {Dashboard.Source.Demo, []}, name: nil, topic: "#{context.test}"}
       )
 
-    assert %Snapshot{demo: true} = Poller.snapshot(poller)
+    assert %Snapshot{demo: true, relay: false} = Poller.snapshot(poller)
+  end
+
+  test "says whether its source is the relay", context do
+    inbox = start_supervised!({Dashboard.Relay.Inbox, name: nil})
+
+    poller =
+      start_supervised!(
+        {Poller,
+         source: {Dashboard.Source.Relay, inbox: inbox, interval_seconds: 5},
+         name: nil,
+         topic: "#{context.test}"}
+      )
+
+    assert %Snapshot{demo: false, relay: true} = Poller.snapshot(poller)
   end
 
   describe "delay/3" do

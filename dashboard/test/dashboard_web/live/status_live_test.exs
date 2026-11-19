@@ -3,6 +3,7 @@ defmodule DashboardWeb.StatusLiveTest do
   use DashboardWeb.ConnCase, async: false
 
   alias Dashboard.{Fixtures, Poller, Snapshot, StubSource}
+  alias Dashboard.Relay.Inbox
 
   # Starts the poller the page reads, with a scripted first result, and waits
   # until that result is in. The long interval keeps it quiet afterwards; tests
@@ -33,6 +34,7 @@ defmodule DashboardWeb.StatusLiveTest do
 
       assert html =~ "Runner host"
       refute has_element?(view, "#demo-badge")
+      refute has_element?(view, "#relay-footer")
 
       assert has_element?(view, "#verdict.verdict-attention", "1 runner down: legacy-tools")
       assert has_element?(view, "#verdict", "2 jobs waiting for slot units")
@@ -370,6 +372,58 @@ defmodule DashboardWeb.StatusLiveTest do
 
       refute has_element?(view, "#verdict", "Stale data")
       assert has_element?(view, "#freshness", "updated")
+    end
+  end
+
+  describe "relay mode" do
+    setup do
+      inbox = start_supervised!({Inbox, name: nil})
+
+      snapshot = start_relay_poller({Dashboard.Source.Relay, inbox: inbox, interval_seconds: 5})
+
+      assert %Snapshot{status: nil, error: :no_push_yet} = snapshot
+      %{inbox: inbox}
+    end
+
+    # Polls the inbox often, unlike the quiet poller above.
+    defp start_relay_poller(source) do
+      Dashboard.subscribe()
+      start_supervised!({Poller, source: source, interval: 20, max_backoff: 20})
+      assert_receive {:snapshot, %Snapshot{} = snapshot}
+      snapshot
+    end
+
+    test "waits for the host's first push, then shows it", %{conn: conn, inbox: inbox} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#no-reading", "No report yet")
+      assert has_element?(view, "#no-reading", "has not pushed its status yet")
+      refute has_element?(view, "#no-reading", "Check that")
+      assert has_element?(view, "#relay-footer", "this page cannot reach the host")
+
+      :ok = Inbox.offer(inbox, Fixtures.status(), System.system_time(:second))
+
+      assert_receive {:snapshot, %Snapshot{error: nil}}
+      refute has_element?(view, "#no-reading")
+      assert has_element?(view, "#runner-mobile-app", "Running")
+      assert has_element?(view, "#freshness", "updated")
+    end
+
+    test "keeps the last push and turns stale when pushes stop", %{conn: conn, inbox: inbox} do
+      now = System.system_time(:second)
+      :ok = Inbox.offer(inbox, Fixtures.status(), now)
+      assert_receive {:snapshot, %Snapshot{error: nil}}
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # The same document again, as if it had last arrived an hour ago.
+      :ok = Inbox.offer(inbox, Fixtures.status(), now - 3_600)
+
+      assert_receive {:snapshot, %Snapshot{error: {:no_push, _at}}}
+      assert has_element?(view, "#verdict", "Stale data: showing the last good reading")
+      assert has_element?(view, "#verdict", "Waiting: the runner host has not pushed since")
+      refute has_element?(view, "#verdict", "Still retrying")
+      assert has_element?(view, "#freshness", "Stale")
+      assert has_element?(view, "#runner-mobile-app")
     end
   end
 
