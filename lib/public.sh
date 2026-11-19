@@ -132,13 +132,13 @@ public_unit_alias() {
 }
 
 # A worker directory is a path: it becomes the alias of the runner that lives
-# there, or other.
+# there (its name with GRM_RELAY_SHARE_DETAILS=1), or other.
 public_directory_alias() {
   local directory=$1 entry name
   for entry in "${GRM_RUNNERS[@]}"; do
     read -r name _ <<< "$entry"
     if [[ $(readlink -f "$GRM_RUNNERS_DIR/$name" 2>/dev/null) == "$directory" ]]; then
-      public_runner_alias "$name"
+      if [[ ${GRM_RELAY_SHARE_DETAILS:-0} == 1 ]]; then printf '%s' "$name"; else public_runner_alias "$name"; fi
       return
     fi
   done

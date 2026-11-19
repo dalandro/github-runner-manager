@@ -289,6 +289,7 @@ print("\n".join(leaked + [f"no value to test in {name}" for name in untested]))
   [ "$status" -eq 0 ]
   [ "$(json '[(r["name"], r["repository"], r["labels"]) for r in document["runners"]]')" = \
     "[('mobile-app', 'org/mobile-app', ''), ('web-app', 'org/web-app', '')]" ]
+  [ "$(json '[w["directory"] for w in document["workers"]]')" = "['mobile-app']" ]
   [ "$(json '[document["slots"]["records"][0]["job"][k] for k in ("run_id", "pull_request", "pull_request_title", "server_url", "actor")]')" = \
     "['8123456789', 57, 'Keep drafts while offline', 'https://github.example.com', None]" ]
   [ "$(json '[e["detail"] for e in document["events"] if e["kind"] == "lock-acquire"]')" = "['job e2e-android']" ]

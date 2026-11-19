@@ -90,7 +90,7 @@ output (exit 70), and the suite fails until a new field gets one.
 | alias | event kinds | as is for the kinds in [events.md](events.md), else `other` |
 | share | the job details: workflow, job, run id and attempt, ref, head ref, sha, event, server URL, pull request number and title; the lock holder's run id and job | `null`, or `""` where the schema needs a string |
 | numeric | event detail | only in the numeric forms the gates write (`ticket 41, 2 units after 0s; used 5/6`), else `""` |
-| never | worker directories (the runner's alias instead), runner labels, the job's actor | never |
+| never | worker directories (the runner's alias instead, or its name with the opt-in), runner labels, the job's actor | never |
 
 `GRM_RELAY_SHARE_DETAILS=1` in the config is the one opt-in: alias, share and
 numeric fields are then sent as they are, so the board shows real repository
