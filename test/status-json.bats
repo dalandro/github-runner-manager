@@ -248,6 +248,41 @@ field_paths() {
   [ "$(json '[e["detail"] for e in document["events"] if e["kind"] == "admit"][0].startswith("ticket ")')" = True ]
 }
 
+@test "public json replaces every value that is not kept, field by field" {
+  full_installation
+  "$GRM_ROOT/bin/grm-status" --json > "$BATS_TEST_TMPDIR/private.json"
+  "$GRM_ROOT/bin/grm-status" --json --public > "$BATS_TEST_TMPDIR/public.json"
+  bash -c 'source "$1/lib/common.sh"; source "$1/lib/public.sh"; public_classes' _ "$GRM_ROOT" > "$BATS_TEST_TMPDIR/classes"
+  # Catches a field that has a class but whose value skips public_field: its
+  # real value would reach the public copy unchanged. Events are kept by
+  # public_subject and public_detail where they hold no names (other tests).
+  run python3 -c '
+import json, sys
+private, public = (json.load(open(name)) for name in sys.argv[1:3])
+classes = dict(line.split() for line in open(sys.argv[3]))
+seen, leaked = set(), []
+def walk(mine, theirs, path):
+    if isinstance(mine, dict):
+        for key in mine:
+            walk(mine[key], theirs[key], path + [key])
+    elif isinstance(mine, list):
+        for item, other in zip(mine, theirs):
+            walk(item, other, path)
+    else:
+        name = ".".join(path)
+        if classes[name] == "keep" or name.startswith("events.") or mine in (None, ""):
+            return
+        seen.add(name)
+        if theirs == mine:
+            leaked.append(f"{name}: {mine!r}")
+walk(private, public, [])
+untested = sorted(name for name, kind in classes.items() if kind != "keep" and not name.startswith("events.") and name not in seen)
+print("\n".join(leaked + [f"no value to test in {name}" for name in untested]))
+' "$BATS_TEST_TMPDIR/private.json" "$BATS_TEST_TMPDIR/public.json" "$BATS_TEST_TMPDIR/classes"
+  [ "$status" -eq 0 ]
+  [ "$output" = '' ] || { echo "$output"; return 1; }
+}
+
 @test "GRM_RELAY_SHARE_DETAILS=1 sends names, job details and links, never paths, labels or the actor" {
   full_installation
   GRM_RELAY_SHARE_DETAILS=1 run "$GRM_ROOT/bin/grm-status" --json --public
