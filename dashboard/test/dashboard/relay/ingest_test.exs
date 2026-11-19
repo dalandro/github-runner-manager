@@ -21,6 +21,7 @@ defmodule Dashboard.Relay.IngestTest do
             ["Bearer "],
             ["Bearer #{@other}"],
             ["Bearer #{@token}x"],
+            ["Bearer #{String.slice(@token, 0..-2//1)}"],
             ["Basic #{@token}"],
             [@token],
             ["Bearer #{@token}", "Bearer #{@token}"]

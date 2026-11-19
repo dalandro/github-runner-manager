@@ -17,14 +17,15 @@ defmodule Dashboard.Relay.Ingest do
 
   @doc """
   `:ok` when the request carries exactly one `Authorization: Bearer <token>`
-  header and the token is one of `tokens`. Every token is compared in
-  constant time.
+  header and the token is one of `tokens`. Digests of equal length are
+  compared, against every token, so the time taken says nothing about which
+  token matched or how long the tokens are.
   """
   @spec authorize([String.t()], [String.t()]) :: :ok | {:error, :unauthorized}
   def authorize([header], tokens) do
     with [scheme, token] <- String.split(header, " ", parts: 2),
          "bearer" <- String.downcase(scheme, :ascii),
-         true <- token != "" and Enum.any?(tokens, &Plug.Crypto.secure_compare(&1, token)) do
+         true <- token != "" and known?(token, tokens) do
       :ok
     else
       _refused -> {:error, :unauthorized}
@@ -32,6 +33,14 @@ defmodule Dashboard.Relay.Ingest do
   end
 
   def authorize(_headers, _tokens), do: {:error, :unauthorized}
+
+  defp known?(token, tokens) do
+    digest = :crypto.hash(:sha256, token)
+
+    Enum.reduce(tokens, false, fn known, found? ->
+      Plug.Crypto.secure_compare(:crypto.hash(:sha256, known), digest) or found?
+    end)
+  end
 
   @doc """
   The new latest push, or `{:error, :older}` when the document was generated
