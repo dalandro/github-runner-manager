@@ -260,6 +260,11 @@ fake_proc() {
   [ "$(json '[(r["holder_pid"], r["job"]["repository"], r["job"]["workflow"], r["job"]["run_id"], r["job"]["run_attempt"], r["job"]["ref"], r["job"]["event"], r["job"]["head_ref"], r["job"]["pull_request"]) for r in document["slots"]["records"]]')" = \
     "[($hooked, 'org/repo-a', 'CI \"checks\"', '1001', 2, 'refs/heads/main', 'push', None, None), ($bare, None, None, None, None, None, None, None, None), ($reused, None, None, None, None, None, None, None, None)]" ]
   [ "$(json "abs(document['slots']['records'][0]['job']['queued_at'] - $(date +%s)) < 20")" = True ]
+  # A number field that is not a whole number reads as unknown.
+  sed -i 's/^run_attempt 2$/run_attempt 1.5/' "$GRM_STATE_DIR/jobs/$hooked"
+  run "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 0 ]
+  [ "$(json '[document["slots"]["records"][0]["job"][key] for key in ("run_attempt", "run_id")]')" = "[None, '1001']" ]
   [ "$(json 'sorted(document["slots"]["records"][1]["job"])')" = \
     "['actor', 'event', 'head_ref', 'job', 'pull_request', 'pull_request_title', 'queued_at', 'ref', 'repository', 'run_attempt', 'run_id', 'runner', 'server_url', 'sha', 'workflow']" ]
 }
