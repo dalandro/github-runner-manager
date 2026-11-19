@@ -142,3 +142,41 @@ wait_until_ready() { # <server pid>
   wait "$server"
   ! is_listening
 }
+
+@test "the pusher's public document shows on a loopback relay, aliased unless shared" {
+  command -v mix > /dev/null || skip 'Elixir is not installed'
+  [[ -d $GRM_ROOT/dashboard/deps/phoenix ]] || skip 'dashboard dependencies are not fetched'
+  ! is_listening || skip "port $port is in use"
+
+  local token
+  token=$(head -c 30 /dev/urandom | base64)
+  GRM_RELAY_PUSH_TOKENS=$token "$GRM_ROOT/bin/grm-dashboard" --relay --port "$port" > "$BATS_TEST_TMPDIR/server.log" 2>&1 &
+  server=$!
+  processes+=("$server")
+  wait_until_ready "$server"
+
+  # A test installation with demo names, never this machine's own state.
+  export GRM_CONFIG="$BATS_TEST_TMPDIR/config.env" GRM_SYSTEMCTL=true GRM_PROC="$BATS_TEST_TMPDIR/proc"
+  printf 'GRM_RUNNERS=("mobile-app org/mobile-app 3" "web-app org/web-app 1")\n' > "$GRM_CONFIG"
+  mkdir -p "$GRM_PROC"
+  printf '1.50 0 0\n' > "$GRM_PROC/loadavg"
+  printf 'MemAvailable: 4194304 kB\n' > "$GRM_PROC/meminfo"
+  export GRM_RELAY_URL="http://127.0.0.1:$port/ingest" GRM_RELAY_TOKEN_FILE="$BATS_TEST_TMPDIR/relay-token"
+  (umask 077; printf '%s\n' "$token" > "$GRM_RELAY_TOKEN_FILE")
+
+  run "$GRM_ROOT/bin/grm-relay-push" --once
+  [ "$output" = 'grm-relay-push: pushed' ]
+  wait_for page_has 'runner-1'
+  run curl -fsS "http://127.0.0.1:$port/"
+  [[ $output == *'repo-2'* && $output != *'mobile-app'* ]]
+
+  GRM_RELAY_SHARE_DETAILS=1 run "$GRM_ROOT/bin/grm-relay-push" --once
+  [ "$output" = 'grm-relay-push: pushed' ]
+  wait_for page_has 'org/mobile-app'
+
+  run grep -qF -- "$token" "$BATS_TEST_TMPDIR/server.log"
+  [ "$status" -eq 1 ]
+  kill -TERM "$server"
+  wait "$server"
+  ! is_listening
+}
