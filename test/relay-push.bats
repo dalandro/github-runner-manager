@@ -139,6 +139,21 @@ SCRIPT
   [ "$output" = 0 ]
 }
 
+@test "curl reads no curlrc, expands no globs, and goes to loopback without a proxy" {
+  stub_curl 200
+  write_token
+  run "$GRM_ROOT/bin/grm-relay-push" --once
+  [ "$(head -n 1 "$BATS_TEST_TMPDIR/curl-argv")" = -q ]
+  grep -qx -- --globoff "$BATS_TEST_TMPDIR/curl-argv"
+  run grep -cx -- --noproxy "$BATS_TEST_TMPDIR/curl-argv"
+  [ "$output" = 0 ]
+  rm "$BATS_TEST_TMPDIR/curl-argv"
+  GRM_RELAY_URL=http://127.0.0.1:4391/ingest run "$GRM_ROOT/bin/grm-relay-push" --once
+  [ "$status" -eq 0 ]
+  grep -qx -- '=http' "$BATS_TEST_TMPDIR/curl-argv"
+  grep -A1 -x -- --noproxy "$BATS_TEST_TMPDIR/curl-argv" | grep -qx '[*]'
+}
+
 @test "a refused push fails once and says why, without the token" {
   stub_curl 401
   write_token

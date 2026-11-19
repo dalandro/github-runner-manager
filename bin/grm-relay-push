@@ -22,6 +22,9 @@ protocol=$(relay_url_protocol "$GRM_RELAY_URL") ||
   usage_error 'grm-relay-push: GRM_RELAY_URL must be an https URL (http only to 127.0.0.1 or [::1]); see docs/relay-push.md'
 relay_read_token "$GRM_RELAY_TOKEN_FILE" > /dev/null || usage_error 'grm-relay-push: no usable push token; see docs/relay-push.md'
 
+loopback=()
+if [[ $protocol == http ]]; then loopback=(--noproxy '*'); fi
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -34,7 +37,9 @@ push() {
     { reason="grm-status --json --public failed (exit $?)"; return 1; }
   if ((${#document} > 131072)); then reason='status document over 128 KB'; return 1; fi
   : > "$work/reply"
-  code=$(curl --silent --max-time 15 --connect-timeout 10 --proto "=$protocol" \
+  # -q first: no ~/.curlrc may redirect the token, turn off TLS checks or add
+  # a proxy. A relay on this machine is never reached through a proxy.
+  code=$(curl -q --silent --globoff "${loopback[@]}" --max-time 15 --connect-timeout 10 --proto "=$protocol" \
     --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
     --header 'Content-Type: application/json' --data-binary @- \
     --max-filesize 4096 --output "$work/reply" --write-out '%{http_code}' \
