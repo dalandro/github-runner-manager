@@ -43,6 +43,7 @@ SCRIPT
 #!/usr/bin/env bash
 stub=$(dirname "$0")/..
 printf '%s\n' "$1" >> "$stub/sleeps"
+if [[ -n ${STUB_SLEEP_REAL:-} ]]; then exec /bin/sleep "$1"; fi
 (($(wc -l < "$stub/sleeps") < ${STUB_SLEEPS:-1}))
 SCRIPT
   chmod +x "$BATS_TEST_TMPDIR/bin/curl" "$BATS_TEST_TMPDIR/bin/sleep"
@@ -201,4 +202,18 @@ SCRIPT
   grep -Ex 'TasksMax=[0-9]+' "$unit"
   run grep -E '^Environment=.*(TOKEN|URL)' "$unit"
   [ "$status" -eq 1 ]
+}
+
+@test "the pusher stops at once on TERM and leaves no files" {
+  stub_curl 200
+  write_token
+  export TMPDIR="$BATS_TEST_TMPDIR/tmp"
+  mkdir "$TMPDIR"
+  STUB_SLEEP_REAL=1 "$GRM_ROOT/bin/grm-relay-push" > "$BATS_TEST_TMPDIR/pusher.log" 2>&1 &
+  pusher=$!; processes+=("$pusher")
+  wait_for test -s "$BATS_TEST_TMPDIR/sleeps" || { cat "$BATS_TEST_TMPDIR/pusher.log"; return 1; }
+  kill -TERM "$pusher"
+  run timeout 3 tail --pid "$pusher" -f /dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$TMPDIR")" ]
 }
