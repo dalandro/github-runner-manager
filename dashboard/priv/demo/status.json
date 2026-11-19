@@ -116,7 +116,24 @@
         "units": 3,
         "label": "org/mobile-app",
         "since": 1767267938,
-        "unparking": false
+        "unparking": false,
+        "job": {
+          "repository": "org/mobile-app",
+          "workflow": "Android",
+          "job": "e2e-android",
+          "run_id": "8123456789",
+          "run_attempt": 1,
+          "ref": "refs/pull/57/merge",
+          "head_ref": "feature/offline-drafts",
+          "sha": "3f9a1c27d84be5a0c6f1e2d93b7a4c58e1d06b72",
+          "event": "pull_request",
+          "actor": "dev-alex",
+          "runner": "mobile-app",
+          "server_url": "https://github.com",
+          "pull_request": 57,
+          "pull_request_title": "Keep drafts while offline",
+          "queued_at": 1767267932
+        }
       },
       {
         "kind": "parked",
@@ -125,7 +142,24 @@
         "units": 3,
         "label": "org/tablet-app",
         "since": 1767268429,
-        "unparking": false
+        "unparking": false,
+        "job": {
+          "repository": "org/tablet-app",
+          "workflow": "Release",
+          "job": "e2e-tablet",
+          "run_id": "8123459012",
+          "run_attempt": 1,
+          "ref": "refs/heads/main",
+          "head_ref": null,
+          "sha": "b72e0d4419c3a6f58e2d7c90a1b34f6e5d8c2a17",
+          "event": "push",
+          "actor": "dev-sam",
+          "runner": "tablet-app",
+          "server_url": "https://github.com",
+          "pull_request": null,
+          "pull_request_title": null,
+          "queued_at": 1767268396
+        }
       },
       {
         "kind": "holding",
@@ -134,7 +168,24 @@
         "units": 2,
         "label": "org/web-app",
         "since": 1767268606,
-        "unparking": false
+        "unparking": false,
+        "job": {
+          "repository": "org/web-app",
+          "workflow": "Deploy preview",
+          "job": "build",
+          "run_id": "8123460345",
+          "run_attempt": 2,
+          "ref": "refs/heads/main",
+          "head_ref": null,
+          "sha": "5c1d8e2fa907b34e6d1c0a8f2b9e7d4c3a6f1e05",
+          "event": "workflow_dispatch",
+          "actor": "dev-alex",
+          "runner": "web-app",
+          "server_url": "https://github.com",
+          "pull_request": null,
+          "pull_request_title": null,
+          "queued_at": 1767268606
+        }
       },
       {
         "kind": "queued",
@@ -143,7 +194,24 @@
         "units": 2,
         "label": "org/data-pipeline",
         "since": 1767268692,
-        "unparking": false
+        "unparking": false,
+        "job": {
+          "repository": "org/data-pipeline",
+          "workflow": "CI",
+          "job": "test",
+          "run_id": "8123461678",
+          "run_attempt": 1,
+          "ref": "refs/pull/212/merge",
+          "head_ref": "fix/late-rows",
+          "sha": "e8a4b1f3c6d20975a1e4c8b2d7f05a3e9c6b1d48",
+          "event": "pull_request",
+          "actor": "dev-kim",
+          "runner": "data-pipeline",
+          "server_url": "https://github.com",
+          "pull_request": 212,
+          "pull_request_title": "Skip rows that arrive after the cut-off",
+          "queued_at": 1767268692
+        }
       },
       {
         "kind": "queued",
@@ -152,7 +220,24 @@
         "units": 1,
         "label": "org/api",
         "since": 1767268774,
-        "unparking": false
+        "unparking": false,
+        "job": {
+          "repository": null,
+          "workflow": null,
+          "job": null,
+          "run_id": null,
+          "run_attempt": null,
+          "ref": null,
+          "head_ref": null,
+          "sha": null,
+          "event": null,
+          "actor": null,
+          "runner": null,
+          "server_url": null,
+          "pull_request": null,
+          "pull_request_title": null,
+          "queued_at": null
+        }
       }
     ]
   },

@@ -9,6 +9,8 @@ setup() {
   export GRM_DEVICE_LOCK="$BATS_TEST_TMPDIR/device.lock"
   export GRM_DEVICE_LOCK_GRACE=1
   export GRM_LOAD_TIMEOUT=3
+  # The suite itself runs in Actions jobs; their variables must not reach the hooks.
+  unset "${!GITHUB_@}" RUNNER_NAME
   processes=()
 }
 

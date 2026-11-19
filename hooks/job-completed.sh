@@ -9,4 +9,5 @@ elif (($#)); then
   usage_error 'usage: job-completed.sh [--holder PID]'
 fi
 [[ -n $holder ]] || usage_error 'job-completed.sh must run as a runner job hook; use --holder for manual use'
+remove_job_record "$holder"
 exec "$GRM_ROOT/bin/job-slots" release --holder "$holder"

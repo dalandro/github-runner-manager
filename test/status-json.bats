@@ -243,3 +243,23 @@ fake_proc() {
   [ "$status" -eq 75 ]
   [[ $output != *'"records"'* ]]
 }
+
+@test "json status gives each slot record its job, and nulls where the hooks recorded none" {
+  export GRM_SYSTEMCTL=true
+  start_holder; hooked=$holder
+  GRM_JOB_UNITS=1 GITHUB_REPOSITORY=org/repo-a GITHUB_WORKFLOW='CI "checks"' GITHUB_JOB=test \
+    GITHUB_RUN_ID=1001 GITHUB_RUN_ATTEMPT=2 GITHUB_REF=refs/heads/main GITHUB_EVENT_NAME=push \
+    "$GRM_ROOT/hooks/job-started.sh" --holder "$hooked"
+  start_holder; bare=$holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$bare" --units 1 --label org/repo-b
+  start_holder; reused=$holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$reused" --units 1 --label org/repo-c
+  printf 'start 1\nrepository org/someone-else\n' > "$GRM_STATE_DIR/jobs/$reused"
+  run "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 0 ]
+  [ "$(json '[(r["holder_pid"], r["job"]["repository"], r["job"]["workflow"], r["job"]["run_id"], r["job"]["run_attempt"], r["job"]["ref"], r["job"]["event"], r["job"]["head_ref"], r["job"]["pull_request"]) for r in document["slots"]["records"]]')" = \
+    "[($hooked, 'org/repo-a', 'CI \"checks\"', '1001', 2, 'refs/heads/main', 'push', None, None), ($bare, None, None, None, None, None, None, None, None), ($reused, None, None, None, None, None, None, None, None)]" ]
+  [ "$(json "abs(document['slots']['records'][0]['job']['queued_at'] - $(date +%s)) < 20")" = True ]
+  [ "$(json 'sorted(document["slots"]["records"][1]["job"])')" = \
+    "['actor', 'event', 'head_ref', 'job', 'pull_request', 'pull_request_title', 'queued_at', 'ref', 'repository', 'run_attempt', 'run_id', 'runner', 'server_url', 'sha', 'workflow']" ]
+}
