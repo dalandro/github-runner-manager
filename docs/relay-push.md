@@ -26,17 +26,18 @@ pull request. Paths, runner labels and user names stay out either way.
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `GRM_RELAY_URL` | none | The relay's `/ingest` URL. `https://` only; `http://` to `127.0.0.1` or `[::1]` for a relay on this machine. |
-| `GRM_RELAY_TOKEN_FILE` | `~/.config/grm/relay-token` | The push token: one line, 32 or more visible characters, no quotes or backslashes, in a file only this account can read (`chmod 600`). Read before every push, so a rotated token needs no restart. |
+| `GRM_RELAY_TOKEN_FILE` | `$XDG_CONFIG_HOME/grm/relay-token` (`~/.config/grm/relay-token`) | The push token: one line, 32 or more visible characters, no quotes or backslashes, in a file only this account can read (`chmod 600`). Read before every push, so a rotated token needs no restart. |
 | `GRM_RELAY_SHARE_DETAILS` | `0` | `1` sends real names and job details (above). |
 
 ## Behaviour
 
 - One push: `grm-status --json --public` (60 s limit, 128 KB cap), then one
   `curl` POST with a 15 s limit. The token reaches `curl` through a config on
-  a file descriptor, never on a command line, and `curl` may use only the
-  URL's protocol.
-- The reply's `next_push_seconds` sets the wait, clamped to 2 to 300 seconds;
-  without it the wait is 5.
+  a file descriptor, never on a command line. `curl` may use only the URL's
+  protocol, reads no `~/.curlrc`, and reaches a loopback relay without a proxy.
+- The reply's `next_push_seconds` sets the wait, clamped to 2 to 300 seconds
+  (the relay accepts intervals up to 900; the pusher's 300 wins); without it
+  the wait is 5.
 - A failure (no token, status failed, curl error, any status but 200) backs off:
   twice the interval, doubling up to 5 minutes, less up to a quarter at random.
 - It logs the first failure of a run and the recovery, nothing else.

@@ -84,7 +84,7 @@ output (exit 70), and the suite fails until a new field gets one.
 
 | Class | Fields | Sent |
 | --- | --- | --- |
-| keep | numbers, states, times, process ids, the stale holder's process name (such as `adb`), event kinds | as is |
+| keep | numbers, states, times, process ids, the stale holder's process name (the kernel's short name of the process holding the device lock, such as `adb`; also the subject of `stale` and `kill` events), event kinds | as is |
 | alias | runner names (`runner-1`, `runner-2` in config order) and units (`runner-1.service`); repositories, slot labels, the lock holder's repository and event subjects (`repo-1`, `repo-2` in config order); a job's runner | the stand-in, or `other` for a name the config does not list |
 | share | the job details: workflow, job, run id and attempt, ref, head ref, sha, event, server URL, pull request number and title; the lock holder's run id and job | `null`, or `""` where the schema needs a string |
 | numeric | event detail | only in the numeric forms the gates write (`ticket 41, 2 units after 0s; used 5/6`), else `""` |
