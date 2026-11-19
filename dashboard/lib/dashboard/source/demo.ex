@@ -53,7 +53,14 @@ defmodule Dashboard.Source.Demo do
         host: %{status.host | load_1m: drift(status.host.load_1m, now)},
         slots: %{
           status.slots
-          | records: Enum.map(status.slots.records, &%{&1 | since: move.(&1.since)})
+          | records:
+              Enum.map(status.slots.records, fn record ->
+                %{
+                  record
+                  | since: move.(record.since),
+                    job: %{record.job | queued_at: move.(record.job.queued_at)}
+                }
+              end)
         },
         device_lock: %{
           status.device_lock

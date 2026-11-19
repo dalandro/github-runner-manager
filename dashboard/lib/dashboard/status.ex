@@ -13,6 +13,7 @@ defmodule Dashboard.Status do
     DeviceLock,
     Event,
     Host,
+    Job,
     LockHolder,
     Runner,
     SlotRecord,
@@ -82,10 +83,53 @@ defmodule Dashboard.Status do
           }
   end
 
+  defmodule Job do
+    @moduledoc """
+    What the runner job hook recorded about a slot holder's job. Every field
+    may be unknown: a record from before job records, a hook that could not
+    write one, or a producer that leaves fields out all read as `nil`.
+    """
+    defstruct [
+      :repository,
+      :workflow,
+      :job,
+      :run_id,
+      :run_attempt,
+      :ref,
+      :head_ref,
+      :sha,
+      :event,
+      :actor,
+      :runner,
+      :server_url,
+      :pull_request,
+      :pull_request_title,
+      :queued_at
+    ]
+
+    @type t :: %__MODULE__{
+            repository: String.t() | nil,
+            workflow: String.t() | nil,
+            job: String.t() | nil,
+            run_id: String.t() | nil,
+            run_attempt: non_neg_integer() | nil,
+            ref: String.t() | nil,
+            head_ref: String.t() | nil,
+            sha: String.t() | nil,
+            event: String.t() | nil,
+            actor: String.t() | nil,
+            runner: String.t() | nil,
+            server_url: String.t() | nil,
+            pull_request: non_neg_integer() | nil,
+            pull_request_title: String.t() | nil,
+            queued_at: non_neg_integer() | nil
+          }
+  end
+
   defmodule SlotRecord do
     @moduledoc "One job known to the slot gate: holding units, queued for them, or parked."
-    @enforce_keys [:kind, :ticket, :holder_pid, :units, :label, :since, :unparking]
-    defstruct [:kind, :ticket, :holder_pid, :units, :label, :since, :unparking]
+    @enforce_keys [:kind, :ticket, :holder_pid, :units, :label, :since, :unparking, :job]
+    defstruct [:kind, :ticket, :holder_pid, :units, :label, :since, :unparking, :job]
 
     @type kind :: :holding | :queued | :parked
     @type t :: %__MODULE__{
@@ -95,7 +139,8 @@ defmodule Dashboard.Status do
             units: pos_integer(),
             label: String.t(),
             since: non_neg_integer() | nil,
-            unparking: boolean()
+            unparking: boolean(),
+            job: Dashboard.Status.Job.t()
           }
   end
 
@@ -248,11 +293,43 @@ defmodule Dashboard.Status do
       units: integer!(record, "units"),
       label: string!(record, "label"),
       since: optional_integer!(record, "since"),
-      unparking: boolean!(record, "unparking")
+      unparking: boolean!(record, "unparking"),
+      job: job!(Map.get(record, "job", %{}))
     }
   end
 
   defp slot_record!(_other), do: throw({:invalid_field, "slots.records"})
+
+  @unknown_job Map.new(
+                 ~w(repository workflow job run_id run_attempt ref head_ref sha event actor runner server_url pull_request pull_request_title queued_at),
+                 &{&1, nil}
+               )
+
+  # Older producers have no job, and a filtered one may leave fields out: a
+  # missing field is unknown. A field that is present still has to have its type.
+  defp job!(job) when is_map(job) do
+    job = Map.merge(@unknown_job, job)
+
+    %Job{
+      repository: optional_string!(job, "repository"),
+      workflow: optional_string!(job, "workflow"),
+      job: optional_string!(job, "job"),
+      run_id: optional_string!(job, "run_id"),
+      run_attempt: optional_integer!(job, "run_attempt"),
+      ref: optional_string!(job, "ref"),
+      head_ref: optional_string!(job, "head_ref"),
+      sha: optional_string!(job, "sha"),
+      event: optional_string!(job, "event"),
+      actor: optional_string!(job, "actor"),
+      runner: optional_string!(job, "runner"),
+      server_url: optional_string!(job, "server_url"),
+      pull_request: optional_integer!(job, "pull_request"),
+      pull_request_title: optional_string!(job, "pull_request_title"),
+      queued_at: optional_integer!(job, "queued_at")
+    }
+  end
+
+  defp job!(_other), do: throw({:invalid_field, "slots.records.job"})
 
   # Explicit clauses instead of String.to_existing_atom/1: the set is closed and
   # an unknown kind is a schema violation, not a new atom.
@@ -323,6 +400,8 @@ defmodule Dashboard.Status do
 
   defp optional_integer!(map, key),
     do: fetch!(map, key, &(is_nil(&1) or non_negative_integer?(&1)))
+
+  defp optional_string!(map, key), do: fetch!(map, key, &(is_nil(&1) or is_binary(&1)))
 
   defp optional_number!(map, key), do: fetch!(map, key, &(is_nil(&1) or is_number(&1)))
 

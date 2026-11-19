@@ -73,6 +73,17 @@ defmodule Dashboard.SourceTest do
       assert waits == Enum.map([0, 45, 599, 0], &(&1 + recorded_wait))
     end
 
+    test "a job's arrival moves with its record, and an unknown one stays unknown" do
+      recorded = Fixtures.status()
+      {:ok, status} = Demo.fetch(now: 6_000_000)
+
+      for {before, now} <- Enum.zip(recorded.slots.records, status.slots.records) do
+        if before.job.queued_at,
+          do: assert(now.since - now.job.queued_at == before.since - before.job.queued_at),
+          else: assert(now.job.queued_at == nil)
+      end
+    end
+
     test "the load drifts a little around the recorded value" do
       for now <- 1..40 do
         {:ok, status} = Demo.fetch(now: 5_000_000 + now)
