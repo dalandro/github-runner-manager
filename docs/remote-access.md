@@ -218,9 +218,11 @@ loopback names only.
   [hosted relay](relay.md). The runner host pushes its status out to the
   dashboard in relay mode on Fly.io, and the phone needs only a browser and a
   password. In exchange it adds an ingest route, three secrets, a public
-  password prompt with rate limits, and a small paid machine (about $2 a month
-  while the host is up), and a copy of the status sits on someone else's
-  server: aliases by default, real names and job details only with
+  password prompt with rate limits, and a small paid machine (by
+  [Fly's price list](https://fly.io/docs/about/pricing/) as read 2026-11-19,
+  about $2.19 a month while the host is up; not measured), and a copy of the
+  status sits on someone else's server: aliases by default, real names and job
+  details only with
   `GRM_RELAY_SHARE_DETAILS=1`. The host still opens no port, and the relay
   cannot reach it.
 - **A public tunnel with a login in front.** Simple to start, but the page is

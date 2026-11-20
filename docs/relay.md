@@ -80,7 +80,7 @@ and from Fly secrets (the other three).
 Steps only the owner can do: they need a Fly account, cost money and create
 secrets. Run them from a checkout of this repository on any machine with
 [`flyctl`](https://fly.io/docs/flyctl/install/) and `openssl`, apart from steps
-8 to 10, which run on the runner host.
+8 to 10 and 12, which run on the runner host.
 
 1. Update the checkout and enter the dashboard directory:
 
@@ -175,7 +175,7 @@ secrets. Run them from a checkout of this repository on any machine with
     systemctl --user start grm-relay-push
     ```
 
-    The board shows "Stale data" with the time of the last push, then returns
+    The board shows "Stale data" and how old the last push is, then returns
     to normal within a few seconds of the restart.
 
 ### Later
