@@ -379,21 +379,28 @@ defmodule DashboardWeb.StatusLiveTest do
     setup do
       inbox = start_supervised!({Inbox, name: nil})
 
-      snapshot = start_relay_poller({Dashboard.Source.Relay, inbox: inbox, interval_seconds: 5})
+      {snapshot, poller} =
+        start_relay_poller({Dashboard.Source.Relay, inbox: inbox, interval_seconds: 5})
 
       assert %Snapshot{status: nil, error: :no_push_yet} = snapshot
-      %{inbox: inbox}
+      %{inbox: inbox, poller: poller}
     end
 
     # Polls the inbox often, unlike the quiet poller above.
     defp start_relay_poller(source) do
       Dashboard.subscribe()
-      start_supervised!({Poller, source: source, interval: 20, max_backoff: 20})
+      poller = start_supervised!({Poller, source: source, interval: 20, max_backoff: 20})
       assert_receive {:snapshot, %Snapshot{} = snapshot}
-      snapshot
+      {snapshot, poller}
     end
 
-    test "waits for the host's first push, then shows it", %{conn: conn, inbox: inbox} do
+    # The poller broadcasts to this test and to the page from its own process;
+    # once it answers, the page's copy is in the page's mailbox ahead of any
+    # question the test asks the page next.
+    defp broadcast_done(poller), do: :sys.get_state(poller)
+
+    test "waits for the host's first push, then shows it",
+         %{conn: conn, inbox: inbox, poller: poller} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       assert has_element?(view, "#no-reading", "No report yet")
@@ -404,12 +411,14 @@ defmodule DashboardWeb.StatusLiveTest do
       :ok = Inbox.offer(inbox, Fixtures.status(), System.system_time(:second))
 
       assert_receive {:snapshot, %Snapshot{error: nil}}
+      broadcast_done(poller)
       refute has_element?(view, "#no-reading")
       assert has_element?(view, "#runner-mobile-app", "Running")
       assert has_element?(view, "#freshness", "updated")
     end
 
-    test "keeps the last push and turns stale when pushes stop", %{conn: conn, inbox: inbox} do
+    test "keeps the last push and turns stale when pushes stop",
+         %{conn: conn, inbox: inbox, poller: poller} do
       now = System.system_time(:second)
       :ok = Inbox.offer(inbox, Fixtures.status(), now)
       assert_receive {:snapshot, %Snapshot{error: nil}}
@@ -419,6 +428,7 @@ defmodule DashboardWeb.StatusLiveTest do
       :ok = Inbox.offer(inbox, Fixtures.status(), now - 3_600)
 
       assert_receive {:snapshot, %Snapshot{error: {:no_push, _at}}}
+      broadcast_done(poller)
       assert has_element?(view, "#verdict", "Stale data: showing the last good reading")
       assert has_element?(view, "#verdict", "Waiting: the runner host has not pushed since")
       refute has_element?(view, "#verdict", "Still retrying")
