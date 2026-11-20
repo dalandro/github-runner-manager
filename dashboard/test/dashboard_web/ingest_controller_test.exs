@@ -129,20 +129,31 @@ defmodule DashboardWeb.IngestControllerTest do
       assert get_resp_header(conn, "retry-after") == ["1"]
     end
 
-    test "after ten wrong tokens refuses the client for ten minutes, right token or not",
-         %{conn: conn} do
+    test "after ten wrong tokens refuses the client's guesses for ten minutes", %{conn: conn} do
       for _attempt <- 1..10 do
         assert conn |> push_document(demo_document(), @token <> "x") |> json_response(401)
       end
 
-      conn = push_document(conn, demo_document())
+      conn = push_document(conn, demo_document(), @token <> "x")
       assert json_response(conn, 429)["error"] =~ "too many wrong push tokens"
-      assert get_resp_header(conn, "retry-after") == ["600"]
+      assert [seconds] = get_resp_header(conn, "retry-after")
+      assert String.to_integer(seconds) in 599..600
       assert Inbox.latest(Inbox) == nil
     end
 
-    test "a right token takes back its attempt, so a busy host is never locked out",
+    test "takes a right token whatever others guessed, so the board never goes stale for it",
          %{conn: conn} do
+      for client <- 1..10, _attempt <- 1..10 do
+        conn
+        |> Map.put(:remote_ip, {198, 51, 100, client})
+        |> push_document(demo_document(), @token <> "x")
+      end
+
+      assert conn |> push_document(demo_document(), @token <> "x") |> json_response(429)
+      assert conn |> push_document(demo_document()) |> json_response(200)
+    end
+
+    test "counts no right token, so a busy host is never locked out", %{conn: conn} do
       for _attempt <- 1..20 do
         assert conn |> push_document(demo_document()) |> json_response(200)
       end

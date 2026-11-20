@@ -4,11 +4,13 @@ defmodule DashboardWeb.IngestController do
   (`Dashboard.Relay`). A runner host sends its `grm-status --json` document
   here with a push token; an accepted document becomes what the page shows.
 
-  The checks run cheapest first: the client's rate limit, the token (a wrong
-  one counts against the client, as a wrong viewer password does), one push
-  a second (`Dashboard.Relay.Limiter`), then the size (the body is read only
-  after the token passed, and at most `@max_bytes` of it), then the schema,
-  then the order (`Dashboard.Relay.Inbox.offer/3`). The reply to a
+  The checks run cheapest first: the token, then one push a second
+  (`Dashboard.Relay.Limiter`), then the size (the body is read only after the
+  token passed, and at most `@max_bytes` of it), then the schema, then the
+  order (`Dashboard.Relay.Inbox.offer/3`). A wrong token counts against the
+  client, as a wrong viewer password does, and a locked-out client's guesses
+  get 429. A right token is never counted or refused for others' guesses:
+  the token is too long to guess, and the board must not go stale. The reply to a
   good push is the number of seconds until the next one; a refusal names its
   reason and echoes nothing that was sent.
   """
@@ -29,17 +31,18 @@ defmodule DashboardWeb.IngestController do
   def max_bytes, do: @max_bytes
 
   def create(conn, _params) do
-    key = Client.key(conn)
-
-    with {:attempt, :ok} <- {:attempt, Limiter.attempt(key)},
-         :ok <- Ingest.authorize(get_req_header(conn, "authorization"), Relay.push_tokens()),
-         :ok <- Limiter.forgive(key),
-         {:push, :ok} <- {:push, Limiter.accept_push()} do
+    with :ok <- Ingest.authorize(get_req_header(conn, "authorization"), Relay.push_tokens()),
+         :ok <- Limiter.accept_push() do
       read_document(conn)
     else
-      {:attempt, {:error, seconds}} -> throttled(conn, seconds, "too many wrong push tokens")
-      {:error, :unauthorized} -> refuse(conn, :unauthorized)
-      {:push, {:error, seconds}} -> throttled(conn, seconds, "one push a second at most")
+      {:error, :unauthorized} ->
+        case Limiter.attempt(Client.key(conn)) do
+          :ok -> refuse(conn, :unauthorized)
+          {:error, seconds} -> throttled(conn, seconds, "too many wrong push tokens")
+        end
+
+      {:error, seconds} ->
+        throttled(conn, seconds, "one push a second at most")
     end
   end
 

@@ -45,12 +45,15 @@ and from Fly secrets (the other three).
 - **Rate limits** (`Dashboard.Relay.Throttle`), counted per client: the IPv4
   address, or the IPv6 /64.
   - Ten wrong viewer passwords or push tokens within ten minutes lock that
-    client out for ten minutes (429 with `Retry-After`), before anything is
-    compared. A right one is not counted, so a browser resending the password
-    or a host pushing every few seconds is never locked out.
+    client out for ten minutes (429 with `Retry-After`). A locked-out
+    client's passwords are refused before they are compared. A right one is
+    not counted, so a browser resending the password is never locked out.
   - A hundred wrong attempts within an hour, from all clients together, refuse
-    every new attempt until the hour has passed. A viewer already signed in
-    keeps the board.
+    every new sign-in until the oldest of them is an hour old. A viewer
+    already signed in keeps the board.
+  - A right push token is never refused for anyone's wrong guesses: a token
+    of 32 or more random characters cannot be guessed, and the board must not
+    go stale. Only wrong tokens are counted.
   - One accepted push a second.
   - Fly's proxy caps connections at 25 per machine (`fly.toml.example`).
 - **Client address.** `Fly-Client-IP`, read with a public name only; anywhere
