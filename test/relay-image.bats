@@ -28,7 +28,8 @@ setup_file() {
   [[ -n ${GRM_RELAY_IMAGE:-} ]] || return 0
   container=grm-relay-smoke-$$
   echo "$container" > "$BATS_FILE_TMPDIR/container"
-  docker run -d --rm --name "$container" -p "127.0.0.1:$port:8080" \
+  # Not --rm: a container that dies at boot stays, so its log can be shown.
+  docker run -d --name "$container" -p "127.0.0.1:$port:8080" \
     -e GRM_RELAY_PUBLIC_HOST=$public_host -e GRM_RELAY_PUSH_TOKENS=$token \
     -e GRM_RELAY_VIEWER_PASSWORD=$password \
     -e SECRET_KEY_BASE="$(head -c 48 /dev/urandom | base64 -w0)" \
@@ -44,7 +45,7 @@ setup_file() {
 
 teardown_file() {
   [[ -r $BATS_FILE_TMPDIR/container ]] || return 0
-  docker stop -t 5 "$(cat "$BATS_FILE_TMPDIR/container")" > /dev/null 2>&1 || true
+  docker rm -f "$(cat "$BATS_FILE_TMPDIR/container")" > /dev/null 2>&1 || true
 }
 
 setup() {
@@ -136,7 +137,8 @@ setup() {
   done
   run request -H 'Fly-Client-IP: 198.51.100.30' -u "viewer:$password" "$url/"
   [ "$output" = 429 ]
-  [[ $(header retry-after) == *600 ]]
+  # Ten minutes from the tenth wrong password, rounded up: 600, or 599 on a slow runner.
+  [[ $(header retry-after) =~ (599|600)$ ]]
   ! grep -q 'org/' "$BATS_TEST_TMPDIR/body"
 
   run request -H 'Fly-Client-IP: 198.51.100.31' -u "viewer:$password" "$url/"

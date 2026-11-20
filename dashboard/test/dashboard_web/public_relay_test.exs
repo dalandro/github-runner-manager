@@ -132,7 +132,8 @@ defmodule DashboardWeb.PublicRelayTest do
 
       conn = conn |> public() |> from("198.51.100.7") |> with_password() |> get("/")
       assert conn.status == 429
-      assert get_resp_header(conn, "retry-after") == ["600"]
+      assert [seconds] = get_resp_header(conn, "retry-after")
+      assert String.to_integer(seconds) in 599..600
       refute conn.resp_body =~ "org/"
 
       # Another client is counted on its own.
