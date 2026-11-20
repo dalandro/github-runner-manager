@@ -6,7 +6,7 @@ defmodule DashboardWeb.PublicRelayTest do
   import ExUnit.CaptureLog
 
   alias Dashboard.Relay.{Inbox, Limiter}
-  alias DashboardWeb.{RelayLogin, ViewerAuth}
+  alias DashboardWeb.{AllowedHosts, RelayLogin, ViewerAuth}
 
   @public_host "relay.example.dev"
   @password "viewer-password-for-tests"
@@ -200,7 +200,7 @@ defmodule DashboardWeb.PublicRelayTest do
       end
     end
 
-    test "lets its socket connect under the public name", %{conn: conn} do
+    test "lets its socket connect under the public name, from HTTPS pages only", %{conn: conn} do
       [policy] =
         conn
         |> public()
@@ -209,6 +209,16 @@ defmodule DashboardWeb.PublicRelayTest do
         |> get_resp_header("content-security-policy")
 
       assert policy =~ "wss://#{@public_host}:*"
+      refute policy =~ "ws://"
+      assert AllowedHosts.origin_allowed?(URI.parse("https://#{@public_host}"))
+      refute AllowedHosts.origin_allowed?(URI.parse("http://#{@public_host}"))
+      refute AllowedHosts.origin_allowed?(URI.parse("https://localhost"))
+    end
+
+    test "answers to its public name only, not to the loopback names", %{conn: conn} do
+      for host <- ["localhost", "127.0.0.1"] do
+        assert (conn |> Map.put(:host, host) |> with_password() |> get("/")).status == 403
+      end
     end
 
     test "answers robots.txt under any name, for Fly's health check, and nothing else",

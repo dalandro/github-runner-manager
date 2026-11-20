@@ -5,10 +5,13 @@ defmodule DashboardWeb.AllowedHosts do
 
   The extra names exist for one setup: a proxy on this machine that puts the
   loopback port on a private network under its own name (see
-  `docs/remote-access.md`). A public relay adds its own name
-  (`Dashboard.Relay.public_host/0`, see docs/relay.md). The server still listens on 127.0.0.1 only; a
+  `docs/remote-access.md`). The server still listens on 127.0.0.1 only; a
   listed name widens which `Host` and `Origin` values are believed, nothing
   else. Names match exactly: no wildcards, no suffixes, no ports.
+
+  A public relay (`Dashboard.Relay.public_host/0`, docs/relay.md) answers to
+  its public name only, and its socket to `https` pages only: it is reached
+  through Fly's HTTPS, never on loopback.
 
   One list feeds the three places a name is checked, so they cannot drift:
   the `Host` header (`DashboardWeb.Plugs.AllowedHost`), the origin of the
@@ -26,17 +29,16 @@ defmodule DashboardWeb.AllowedHosts do
   @doc "Every allowed name, loopback first. Raises on an invalid setting."
   @spec list() :: [String.t()]
   def list do
-    Enum.uniq(@loopback ++ public() ++ parse!(Application.get_env(:dashboard, :allowed_hosts)))
+    if host = Dashboard.Relay.public_host() do
+      [host]
+    else
+      @loopback ++ parse!(Application.get_env(:dashboard, :allowed_hosts))
+    end
   end
 
   @doc "Whether the operator allowed a name beyond loopback for a private-network proxy."
   @spec extra?() :: boolean()
   def extra?, do: parse!(Application.get_env(:dashboard, :allowed_hosts)) != []
-
-  # A public relay's own name (Dashboard.Relay), served behind Fly's HTTPS.
-  defp public do
-    if host = Dashboard.Relay.public_host(), do: [host], else: []
-  end
 
   @doc """
   The names in a comma-separated setting, lower-cased. Raises `ArgumentError`
@@ -70,12 +72,15 @@ defmodule DashboardWeb.AllowedHosts do
 
   @doc """
   Whether a page from this origin may open the live socket: its host must be
-  an allowed name. The scheme must be `http` or `https`; the port is not
-  compared, as with Phoenix's own `//host` origins.
+  an allowed name. The scheme must be `http` or `https` (`https` only for a
+  public relay); the port is not compared, as with Phoenix's own `//host`
+  origins.
   """
   @spec origin_allowed?(URI.t()) :: boolean()
-  def origin_allowed?(%URI{scheme: scheme, host: host}) when scheme in ["http", "https"],
-    do: allowed?(host)
+  def origin_allowed?(%URI{scheme: "https", host: host}), do: allowed?(host)
+
+  def origin_allowed?(%URI{scheme: "http", host: host}),
+    do: Dashboard.Relay.public_host() == nil and allowed?(host)
 
   def origin_allowed?(%URI{}), do: false
 
@@ -87,8 +92,8 @@ defmodule DashboardWeb.AllowedHosts do
   """
   @spec content_security_policy() :: String.t()
   def content_security_policy do
-    sockets =
-      Enum.map(@loopback, &"ws://#{&1}:*") ++ Enum.map(list() -- @loopback, &"wss://#{&1}:*")
+    {loopback, extra} = Enum.split_with(list(), &loopback?/1)
+    sockets = Enum.map(loopback, &"ws://#{&1}:*") ++ Enum.map(extra, &"wss://#{&1}:*")
 
     "default-src 'self'; img-src 'self' data:; " <>
       "connect-src 'self' #{Enum.join(sockets, " ")}; " <>
