@@ -7,8 +7,9 @@
 # (GRM_RELAY_PUSH_TOKENS, GRM_RELAY_VIEWER_PASSWORD, SECRET_KEY_BASE) are never
 # baked in.
 
-ARG BUILDER_IMAGE=hexpm/elixir:1.20.0-erlang-29.0.1-debian-trixie-20260610-slim
-ARG RUNNER_IMAGE=debian:trixie-20260610-slim
+# Pinned by digest, as CI pins its actions by commit; the tag says which.
+ARG BUILDER_IMAGE=hexpm/elixir:1.20.0-erlang-29.0.1-debian-trixie-20260610-slim@sha256:4a82089d72152d317f4ab6eaed783c593e721479c2569f5629fe9652dfea52bd
+ARG RUNNER_IMAGE=debian:trixie-20260610-slim@sha256:4e401d95de7083948053197a9c3913343cd06b706bf15eb6a0c3ccd26f436a0e
 
 FROM ${BUILDER_IMAGE} AS build
 
@@ -18,9 +19,12 @@ WORKDIR /app
 RUN mix local.hex --force && mix local.rebar --force
 
 COPY mix.exs mix.lock ./
-RUN mix deps.get --only prod && mix deps.compile
+RUN mix deps.get --only prod
+# Compile-time config first, so the dependencies compile with it.
+COPY config/config.exs config/prod.exs config/
+RUN mix deps.compile
 
-COPY config config
+COPY config/runtime.exs config/
 COPY lib lib
 COPY priv priv
 RUN mix compile --warnings-as-errors && mix release
