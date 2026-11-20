@@ -29,7 +29,8 @@ setup_file() {
   container=grm-relay-smoke-$$
   echo "$container" > "$BATS_FILE_TMPDIR/container"
   # Not --rm: a container that dies at boot stays, so its log can be shown.
-  docker run -d --name "$container" -p "127.0.0.1:$port:8080" \
+  # FLY_APP_NAME as Fly sets it, so Fly-Client-IP is read as behind its proxy.
+  docker run -d --name "$container" -p "127.0.0.1:$port:8080" -e FLY_APP_NAME=relay-example \
     -e GRM_RELAY_PUBLIC_HOST=$public_host -e GRM_RELAY_PUSH_TOKENS=$token \
     -e GRM_RELAY_VIEWER_PASSWORD=$password \
     -e SECRET_KEY_BASE="$(head -c 48 /dev/urandom | base64 -w0)" \
@@ -97,13 +98,15 @@ setup() {
     sleep 0.5
   done
   grep -q 'org/mobile-app' "$BATS_TEST_TMPDIR/body"
-  [[ $(header set-cookie) == *'; secure'*'; HttpOnly; SameSite=Strict' ]]
+  # The session, and the cookie that marks this browser as known.
+  header set-cookie | grep '_grm_dashboard=' | grep -q '; secure.*; HttpOnly; SameSite=Strict$'
+  header set-cookie | grep '_grm_relay_known=' | grep -q '; secure.*; HttpOnly; SameSite=Lax$'
 
   # The live socket connects with that sign-in (its cookie is Secure, so it
   # is sent by hand over this plain loopback port), and without it refuses
   # to connect at all.
   local cookie csrf
-  cookie=$(header set-cookie | sed -e 's/^[^:]*: //' -e 's/;.*//')
+  cookie=$(header set-cookie | grep '_grm_dashboard=' | sed -e 's/^[^:]*: //' -e 's/;.*//')
   csrf=$(grep -o 'name="csrf-token" content="[^"]*"' "$BATS_TEST_TMPDIR/body" | sed 's/.*content="//; s/"$//')
   [[ -n $cookie && -n $csrf ]]
   run request --max-time 2 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \

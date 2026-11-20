@@ -27,6 +27,8 @@ defmodule Dashboard.Relay do
     * `:viewer_password` - `GRM_RELAY_VIEWER_PASSWORD`, what the browser's
       password prompt must be given; needed with a public host, optional
       without one.
+    * `:fly_app` - `FLY_APP_NAME`, which Fly sets on its machines; with it, a
+      public relay trusts Fly's proxy to name the client (`behind_fly?/0`).
   """
 
   @min_token_length 32
@@ -76,6 +78,14 @@ defmodule Dashboard.Relay do
   @doc "Whether this relay is served on the internet."
   @spec public?() :: boolean()
   def public?, do: enabled?() and public_host() != nil
+
+  @doc """
+  Whether this is a public relay on a Fly machine, so its requests come
+  through Fly's proxy, which names the client in `Fly-Client-IP`. The image
+  run anywhere else would take that header from the client itself.
+  """
+  @spec behind_fly?() :: boolean()
+  def behind_fly?, do: public?() and setting(:fly_app) not in [nil, ""]
 
   @doc "The viewer password, or nil. Raises on an invalid setting."
   @spec viewer_password() :: String.t() | nil

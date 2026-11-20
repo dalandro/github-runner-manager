@@ -11,7 +11,11 @@ defmodule Dashboard.Relay.Throttle do
     * Across clients: a hundred wrong attempts in an hour refuse every attempt
       until the oldest is an hour old. That caps guessing from many addresses,
       and bounds what is kept: a client is remembered only while one of its
-      wrong attempts or its lock is recent.
+      wrong attempts or its lock is recent. A known client (one that signed in
+      before) is not held back by this cap, so strangers filling it cannot
+      lock the owner out; its own lock still holds, and its attempts past the
+      full cap have a cap of their own, a hundred an hour, to keep what is
+      kept bounded.
     * Pushes: one accepted push per interval (a second by default).
 
   A client is an IPv4 address or an IPv6 /64 network, which one machine
@@ -24,13 +28,19 @@ defmodule Dashboard.Relay.Throttle do
   @global 100
   @global_window 60 * 60_000
 
-  defstruct failures: %{}, locks: %{}, global: [], last_push: nil, push_interval_ms: 1_000
+  defstruct failures: %{},
+            locks: %{},
+            global: [],
+            known: [],
+            last_push: nil,
+            push_interval_ms: 1_000
 
   @type key :: String.t()
   @type t :: %__MODULE__{
-          failures: %{key() => [integer()]},
+          failures: %{key() => [{integer(), :global | :known}]},
           locks: %{key() => integer()},
           global: [integer()],
+          known: [integer()],
           last_push: integer() | nil,
           push_interval_ms: non_neg_integer()
         }
@@ -43,52 +53,64 @@ defmodule Dashboard.Relay.Throttle do
 
   @doc """
   Counts an attempt by `key` at `now`, or refuses it with the seconds to wait.
-  The attempt stays counted as wrong unless `forgive/2` follows.
+  The attempt stays counted as wrong unless `forgive/2` follows. Option:
+  `known: true` for a client that signed in before, which the global cap
+  does not refuse.
   """
-  @spec attempt(t(), key(), integer()) :: {:ok, t()} | {:error, pos_integer()}
-  def attempt(%__MODULE__{} = throttle, key, now) do
+  @spec attempt(t(), key(), integer(), keyword()) :: {:ok, t()} | {:error, pos_integer()}
+  def attempt(%__MODULE__{} = throttle, key, now, options \\ []) do
     throttle = prune(throttle, now)
+    known? = Keyword.get(options, :known, false)
 
     cond do
       until = throttle.locks[key] ->
         {:error, seconds(until - now)}
 
-      length(throttle.global) >= @global ->
+      length(throttle.global) < @global ->
+        {:ok, %{count(throttle, key, now, :global) | global: [now | throttle.global]}}
+
+      not known? ->
         {:error, seconds(List.last(throttle.global) + @global_window - now)}
 
+      length(throttle.known) >= @global ->
+        {:error, seconds(List.last(throttle.known) + @global_window - now)}
+
       true ->
-        failures = [now | Map.get(throttle.failures, key, [])]
-
-        locks =
-          if length(failures) >= @per_client,
-            do: Map.put(throttle.locks, key, now + @lockout),
-            else: throttle.locks
-
-        {:ok,
-         %{
-           throttle
-           | failures: Map.put(throttle.failures, key, failures),
-             locks: locks,
-             global: [now | throttle.global]
-         }}
+        {:ok, %{count(throttle, key, now, :known) | known: [now | throttle.known]}}
     end
+  end
+
+  # Each failure remembers which cap it counted in, for forgive/2.
+  defp count(throttle, key, now, cap) do
+    failures = [{now, cap} | Map.get(throttle.failures, key, [])]
+
+    locks =
+      if length(failures) >= @per_client,
+        do: Map.put(throttle.locks, key, now + @lockout),
+        else: throttle.locks
+
+    %{throttle | failures: Map.put(throttle.failures, key, failures), locks: locks}
   end
 
   @doc "Takes back the latest attempt by `key`: it turned out right."
   @spec forgive(t(), key()) :: t()
   def forgive(%__MODULE__{} = throttle, key) do
     case Map.get(throttle.failures, key, []) do
-      [latest | earlier] ->
-        %{
+      [{latest, cap} | earlier] ->
+        throttle = %{
           throttle
           | failures: put_or_drop(throttle.failures, key, earlier),
             locks:
               if(length(earlier) < @per_client,
                 do: Map.delete(throttle.locks, key),
                 else: throttle.locks
-              ),
-            global: List.delete(throttle.global, latest)
+              )
         }
+
+        case cap do
+          :global -> %{throttle | global: List.delete(throttle.global, latest)}
+          :known -> %{throttle | known: List.delete(throttle.known, latest)}
+        end
 
       [] ->
         throttle
@@ -123,8 +145,8 @@ defmodule Dashboard.Relay.Throttle do
 
   defp prune(throttle, now) do
     failures =
-      for {key, times} <- throttle.failures,
-          recent = Enum.filter(times, &(&1 > now - @client_window)),
+      for {key, attempts} <- throttle.failures,
+          recent = Enum.filter(attempts, fn {at, _cap} -> at > now - @client_window end),
           recent != [],
           into: %{},
           do: {key, recent}
@@ -133,7 +155,8 @@ defmodule Dashboard.Relay.Throttle do
       throttle
       | failures: failures,
         locks: for({key, until} <- throttle.locks, until > now, into: %{}, do: {key, until}),
-        global: Enum.filter(throttle.global, &(&1 > now - @global_window))
+        global: Enum.filter(throttle.global, &(&1 > now - @global_window)),
+        known: Enum.filter(throttle.known, &(&1 > now - @global_window))
     }
   end
 

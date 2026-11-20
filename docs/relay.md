@@ -27,10 +27,10 @@ and from Fly secrets (the other three).
 
 | Setting | Meaning |
 | --- | --- |
-| `GRM_RELAY_PUBLIC_HOST` | The relay's public name, e.g. `<your-app-name>.fly.dev`. Turns on the public bind (0.0.0.0), HSTS, `X-Robots-Tag: noindex` and `Fly-Client-IP`. Relay mode only; the server refuses to boot with it in any other mode. |
+| `GRM_RELAY_PUBLIC_HOST` | The relay's public name, e.g. `<your-app-name>.fly.dev`. Turns on the public bind (0.0.0.0), HSTS and `X-Robots-Tag: noindex`, and with Fly's `FLY_APP_NAME` (set on its machines), `Fly-Client-IP`. Relay mode only; the server refuses to boot with it in any other mode. |
 | `GRM_RELAY_VIEWER_PASSWORD` | The password the browser asks for: 16 or more visible characters. Required with a public name; optional on loopback. |
-| `GRM_RELAY_PUSH_TOKENS` | As in [relay mode](dashboard.md#relay-mode): 32 or more characters each, comma-separated to rotate. |
-| `SECRET_KEY_BASE` | Signs the session cookie. Required with a public name, 64 or more characters, so a sign-in outlives a restart. |
+| `GRM_RELAY_PUSH_TOKENS` | As in [relay mode](dashboard.md#relay-mode): 32 or more characters each, comma-separated to rotate. Random ones only (`openssl rand -hex 32`, as in step 5): a right token is never throttled, so its randomness is all that stops guessing. |
+| `SECRET_KEY_BASE` | Signs the session cookie and the known-browser cookie. Required with a public name, 64 or more characters, so a sign-in outlives a restart. |
 
 ## Security
 
@@ -54,19 +54,32 @@ and from Fly secrets (the other three).
     not counted, so a browser resending the password is never locked out.
   - A hundred wrong attempts within an hour, from all clients together, refuse
     every new sign-in until the oldest of them is an hour old. A viewer
-    already signed in keeps the board.
+    already signed in keeps the board, and a browser that signed in within
+    the last 30 days still gets its password checked, so strangers filling
+    the cap cannot lock the owner's phone out. Its own client's lock still
+    holds, and such attempts past the full cap have a cap of their own, a
+    hundred an hour.
+  - The known-browser cookie (`_grm_relay_known`: `Secure`, `HttpOnly`,
+    `SameSite=Lax`, 30 days) holds a keyed digest of the password and the
+    sign-in time, signed like the session; a new password or
+    `SECRET_KEY_BASE` voids it. It grants nothing without the password. It is
+    `Lax`, not `Strict`, so a board opened from a link elsewhere still
+    carries it.
   - A right push token is never refused for anyone's wrong guesses: a token
     of 32 or more random characters cannot be guessed, and the board must not
     go stale. Only wrong tokens are counted, and on their own: they never
-    fill the viewers' global cap.
+    fill the viewers' global cap. A locked-out client still learns whether
+    a token is right, so a token must be random, never chosen.
   - One accepted push a second.
   - Fly's proxy caps the machine at 50 requests in flight
     (`fly.toml.example`); an open board's live socket counts as one.
 - **Live socket.** With a viewer password it refuses to connect without a
   sign-in, so nobody without the password can hold connections open.
-- **Client address.** `Fly-Client-IP`, read with a public name only; anywhere
-  else anyone could send it. Without a usable one the connection's address is
-  used, which behind Fly is the proxy's, so all such requests share one key.
+- **Client address.** `Fly-Client-IP`, read only with a public name on a Fly
+  machine (Fly sets `FLY_APP_NAME` there); anywhere else, the image included
+  when run elsewhere, anyone could send it. Without a usable one the
+  connection's address is used, which behind Fly is the proxy's, so all such
+  requests share one key.
 - **Headers.** HSTS for a year, `X-Robots-Tag: noindex, nofollow` and the
   dashboard's existing CSP, `Referrer-Policy: no-referrer` and `Host` check.
   `/robots.txt` is answered under any `Host`, for Fly's health check.
@@ -226,7 +239,8 @@ None of this has run on Fly. In particular:
 
 - Whether Fly's proxy replaces a `Fly-Client-IP` header a client sends. If it
   passes one through, a client could spread its guesses over many keys; the
-  global cap of a hundred an hour still holds.
+  global cap of a hundred an hour still holds, and a browser with a
+  known-browser cookie gets a second hundred.
 - Which `Host` Fly's health check sends (the `/robots.txt` exemption covers
   any), and whether the checks wake or keep awake a suspended machine.
 - That a suspended machine resumes with its last push and its rate-limit

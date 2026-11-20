@@ -29,7 +29,9 @@ defmodule DashboardWeb.PublicRelayTest do
     :ok
   end
 
-  defp public_relay(_context), do: relay(public_host: @public_host)
+  # Fly sets FLY_APP_NAME on its machines; Fly-Client-IP is read only with it.
+  defp public_relay(_context), do: relay(public_host: @public_host, fly_app: "relay-example")
+  defp public_relay_off_fly(_context), do: relay(public_host: @public_host)
   defp loopback_relay(_context), do: relay([])
 
   defp public(conn), do: Map.put(conn, :host, @public_host)
@@ -116,8 +118,9 @@ defmodule DashboardWeb.PublicRelayTest do
       assert %{secure: true, same_site: "Strict", max_age: 43_200} =
                conn.resp_cookies["_grm_dashboard"]
 
-      [cookie] = get_resp_header(conn, "set-cookie")
-      assert cookie =~ "; HttpOnly"
+      for cookie <- get_resp_header(conn, "set-cookie") do
+        assert cookie =~ "; HttpOnly"
+      end
     end
 
     test "locks a client out after ten wrong passwords, before comparing", %{conn: conn} do
@@ -139,6 +142,17 @@ defmodule DashboardWeb.PublicRelayTest do
       # Another client is counted on its own.
       other = build_conn() |> public() |> from("198.51.100.8") |> with_password() |> get("/")
       assert html_response(other, 200) =~ "org/mobile-app"
+    end
+
+    test "reads a Fly-Client-IP that is not UTF-8 as no address, without crashing",
+         %{conn: conn} do
+      for _attempt <- 1..10 do
+        conn |> public() |> from(<<0xFF, ?1>>) |> with_password("wrong-password") |> get("/")
+      end
+
+      # All ten were counted under the connection's own address.
+      conn = conn |> public() |> from("198.51.100.9\xFF") |> with_password() |> get("/")
+      assert conn.status == 429
     end
 
     test "a right password costs nothing, however often the browser sends it", %{conn: conn} do
@@ -170,6 +184,79 @@ defmodule DashboardWeb.PublicRelayTest do
              |> with_password()
              |> get("/")
              |> html_response(200)
+    end
+
+    test "a browser that signed in before gets past a global cap strangers filled",
+         %{conn: conn} do
+      signed_in = conn |> public() |> from("198.51.100.7") |> with_password() |> get("/")
+      known = signed_in.resp_cookies["_grm_relay_known"]
+      assert %{secure: true, http_only: true, same_site: "Lax", max_age: 2_592_000} = known
+
+      for client <- 1..10, _attempt <- 1..10 do
+        build_conn()
+        |> public()
+        |> from("203.0.113.#{client}")
+        |> with_password("wrong-password")
+        |> get("/")
+      end
+
+      stranger = build_conn() |> public() |> from("198.51.100.8") |> with_password() |> get("/")
+      assert stranger.status == 429
+
+      # Only the known-browser cookie, no session: the sign-in is over, and the
+      # phone is on another network now.
+      again =
+        build_conn()
+        |> public()
+        |> from("198.51.100.9")
+        |> put_req_cookie("_grm_relay_known", known.value)
+        |> with_password()
+        |> get("/")
+
+      assert html_response(again, 200) =~ "org/mobile-app"
+
+      forged =
+        build_conn()
+        |> public()
+        |> from("198.51.100.10")
+        |> put_req_cookie("_grm_relay_known", "forged")
+        |> with_password()
+        |> get("/")
+
+      assert forged.status == 429
+    end
+
+    test "a browser known under the old password gets no pass after a new one",
+         %{conn: conn} do
+      signed_in = conn |> public() |> from("198.51.100.7") |> with_password() |> get("/")
+      known = signed_in.resp_cookies["_grm_relay_known"]
+
+      relay_settings = Application.get_env(:dashboard, :relay)
+      new_password = @password <> "-new"
+
+      Application.put_env(
+        :dashboard,
+        :relay,
+        Keyword.put(relay_settings, :viewer_password, new_password)
+      )
+
+      for client <- 1..10, _attempt <- 1..10 do
+        build_conn()
+        |> public()
+        |> from("203.0.113.#{client}")
+        |> with_password("wrong-password")
+        |> get("/")
+      end
+
+      again =
+        build_conn()
+        |> public()
+        |> from("198.51.100.9")
+        |> put_req_cookie("_grm_relay_known", known.value)
+        |> with_password(new_password)
+        |> get("/")
+
+      assert again.status == 429
     end
 
     test "wrong push tokens never stop a viewer signing in", %{conn: conn} do
@@ -252,6 +339,23 @@ defmodule DashboardWeb.PublicRelayTest do
       refute log =~ @password
       refute log =~ Base.encode64("viewer:" <> @password)
       refute log =~ @token
+    end
+  end
+
+  describe "a public relay not on Fly" do
+    setup :public_relay_off_fly
+
+    test "ignores Fly-Client-IP: without Fly's proxy anyone could send it", %{conn: conn} do
+      for attempt <- 1..10 do
+        conn
+        |> public()
+        |> from("198.51.100.#{attempt}")
+        |> with_password("wrong-password")
+        |> get("/")
+      end
+
+      assert (conn |> public() |> from("198.51.100.99") |> with_password() |> get("/")).status ==
+               429
     end
   end
 

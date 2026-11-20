@@ -12,9 +12,15 @@ defmodule DashboardWeb.RelayLogin do
 
   The session holds a keyed digest of the password, never the password: a
   new password or a new `SECRET_KEY_BASE` ends every session at once.
+
+  A sign-in also marks the browser as known for thirty days
+  (`known_browser/3`), in a cookie of its own that outlasts the session: a
+  known browser's next sign-in is not refused by the global cap on wrong
+  passwords (`Dashboard.Relay.Throttle`), which strangers can fill.
   """
 
   @max_age 12 * 60 * 60
+  @known_max_age 30 * 24 * 60 * 60
 
   @doc "How long, in seconds, a sign-in lasts."
   @spec max_age() :: pos_integer()
@@ -62,6 +68,26 @@ defmodule DashboardWeb.RelayLogin do
   end
 
   def session_valid?(_session, _password, _secret_key_base, _now), do: false
+
+  @doc "How long, in seconds, a browser stays known after a sign-in."
+  @spec known_max_age() :: pos_integer()
+  def known_max_age, do: @known_max_age
+
+  @doc "The value that marks a browser as known: it signed in with `password` at `now`."
+  @spec known_browser(String.t(), String.t(), integer()) :: %{String.t() => term()}
+  def known_browser(password, secret_key_base, now) do
+    %{"print" => fingerprint(password, secret_key_base), "at" => now}
+  end
+
+  @doc "Whether a value marks a browser that signed in with `password` within `known_max_age/0` of `now`."
+  @spec known_browser?(term(), String.t(), String.t(), integer()) :: boolean()
+  def known_browser?(%{"print" => print, "at" => at}, password, secret_key_base, now)
+      when is_binary(print) and is_integer(at) do
+    Plug.Crypto.secure_compare(print, fingerprint(password, secret_key_base)) and
+      (now - at) in 0..@known_max_age
+  end
+
+  def known_browser?(_value, _password, _secret_key_base, _now), do: false
 
   defp check_credentials(credentials, password) do
     with {:ok, decoded} <- Base.decode64(String.trim(credentials)),
