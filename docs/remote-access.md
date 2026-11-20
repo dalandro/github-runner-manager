@@ -7,6 +7,10 @@ devices a private network, can serve a loopback port to them under a private
 HTTPS name, and adds a header naming the signed-in user to each request. The
 dashboard then shows the page only to the users you list.
 
+The other route is the [hosted relay](relay.md): no app on the phone, but a
+copy of the status, aliased by default, on a public server behind a password.
+[Which one](#alternatives-considered) compares the two.
+
 ```mermaid
 flowchart LR
   phone["Phone browser<br/>on the private network"]
@@ -210,11 +214,15 @@ loopback names only.
 
 ## Alternatives considered
 
-- **A hosted copy fed by snapshots.** The dashboard would run at a hosting
-  provider and the runner host would push its status out to it. That needs an
-  ingest endpoint, two secrets, a public login page and a paid machine, and it
-  puts repository and job names on someone else's server. More to build and
-  more to defend, for the same picture.
+- **A hosted copy fed by snapshots**, now built as the
+  [hosted relay](relay.md). The runner host pushes its status out to the
+  dashboard in relay mode on Fly.io, and the phone needs only a browser and a
+  password. In exchange it adds an ingest route, three secrets, a public
+  password prompt with rate limits, and a small paid machine (about $2 a month
+  while the host is up), and a copy of the status sits on someone else's
+  server: aliases by default, real names and job details only with
+  `GRM_RELAY_SHARE_DETAILS=1`. The host still opens no port, and the relay
+  cannot reach it.
 - **A public tunnel with a login in front.** Simple to start, but the page is
   then one password or one misconfiguration away from the internet, and the
   login is a third party's.
@@ -225,9 +233,12 @@ loopback names only.
 - **An SSH tunnel** (`ssh -L 4290:127.0.0.1:4290 user@host`) remains the
   zero-setup way from a laptop; it is awkward on a phone.
 
-A private network is the default recommendation because nothing becomes public
-at any point, the dashboard keeps its loopback binding, and the application
-needs only a list of names it answers to and of people who may look.
+Both routes stay supported. A private network keeps everything off the
+internet: the dashboard keeps its loopback binding and needs only a list of
+names it answers to and of people who may look, but the phone needs the
+network's app turned on. The hosted relay works from any browser, at the cost
+of a public, password-protected copy of the status. Pick the private network
+when the phone already has one, the relay when it should not need one.
 
 ## Not verified
 

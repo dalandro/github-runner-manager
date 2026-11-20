@@ -111,7 +111,10 @@ page is view-only by construction: it has no buttons that reach the server, no
 forms and no event handlers, and a test flags the usual ways one would be
 added. Design, security
 and trade-offs: [docs/dashboard.md](docs/dashboard.md). From a phone, over a
-private device network: [docs/remote-access.md](docs/remote-access.md).
+private device network: [docs/remote-access.md](docs/remote-access.md). From a
+phone anywhere, with no app on it: a [hosted relay](docs/relay.md) on Fly.io
+that the host pushes its status to, names aliased by default; the host only
+makes outbound requests.
 
 ## Design and limits
 
