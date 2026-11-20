@@ -29,7 +29,7 @@ and from Fly secrets (the other three).
 | --- | --- |
 | `GRM_RELAY_PUBLIC_HOST` | The relay's public name, e.g. `<your-app-name>.fly.dev`. Turns on the public bind (0.0.0.0), HSTS and `X-Robots-Tag: noindex`, and with Fly's `FLY_APP_NAME` (set on its machines), `Fly-Client-IP`. Relay mode only; the server refuses to boot with it in any other mode. |
 | `GRM_RELAY_VIEWER_PASSWORD` | The password the browser asks for: 16 or more visible characters. Required with a public name; optional on loopback. |
-| `GRM_RELAY_PUSH_TOKENS` | As in [relay mode](dashboard.md#relay-mode): 32 or more characters each, comma-separated to rotate. |
+| `GRM_RELAY_PUSH_TOKENS` | As in [relay mode](dashboard.md#relay-mode): 32 or more characters each, comma-separated to rotate. Random ones only (`openssl rand -hex 32`, as in step 5): a right token is never throttled, so its randomness is all that stops guessing. |
 | `SECRET_KEY_BASE` | Signs the session cookie. Required with a public name, 64 or more characters, so a sign-in outlives a restart. |
 
 ## Security
@@ -58,7 +58,8 @@ and from Fly secrets (the other three).
   - A right push token is never refused for anyone's wrong guesses: a token
     of 32 or more random characters cannot be guessed, and the board must not
     go stale. Only wrong tokens are counted, and on their own: they never
-    fill the viewers' global cap.
+    fill the viewers' global cap. A locked-out client still learns whether
+    a token is right, so a token must be random, never chosen.
   - One accepted push a second.
   - Fly's proxy caps the machine at 50 requests in flight
     (`fly.toml.example`); an open board's live socket counts as one.
