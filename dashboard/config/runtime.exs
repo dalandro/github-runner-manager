@@ -7,8 +7,9 @@ if config_env() != :test do
     config :dashboard, DashboardWeb.Endpoint, server: true
   end
 
-  # No sessions outlive a restart and nothing is stored in them, so a fresh
-  # secret per boot is enough and keeps secrets out of the repository.
+  # On this host no session needs to outlive a restart, so a fresh secret per
+  # boot is enough and keeps secrets out of the repository. A public relay
+  # needs a lasting one (below).
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") || Base.encode64(:crypto.strong_rand_bytes(48))
 
@@ -26,6 +27,11 @@ if config_env() != :test do
 
   if header = System.get_env("GRM_DASHBOARD_VIEWER_HEADER") do
     config :dashboard, viewer_header: header
+  end
+
+  # A dashboard that reads this host never listens beyond loopback.
+  if System.get_env("GRM_RELAY_PUBLIC_HOST") && System.get_env("GRM_DASHBOARD_SOURCE") != "relay" do
+    raise "GRM_RELAY_PUBLIC_HOST is for relay mode only (GRM_DASHBOARD_SOURCE=relay)"
   end
 
   source =
@@ -46,9 +52,32 @@ if config_env() != :test do
       # Shows what a runner host pushes to POST /ingest; reads no host itself.
       # Validated at boot (Dashboard.Relay); see docs/dashboard.md.
       "relay" ->
+        public_host = System.get_env("GRM_RELAY_PUBLIC_HOST")
+
         config :dashboard, :relay,
           push_tokens: System.get_env("GRM_RELAY_PUSH_TOKENS"),
-          interval_seconds: String.to_integer(System.get_env("GRM_RELAY_INTERVAL_SECONDS", "5"))
+          interval_seconds: String.to_integer(System.get_env("GRM_RELAY_INTERVAL_SECONDS", "5")),
+          public_host: public_host,
+          viewer_password: System.get_env("GRM_RELAY_VIEWER_PASSWORD")
+
+        # The one place the dashboard listens beyond loopback: a relay with a
+        # public name, behind Fly's proxy, which reaches the machine on its
+        # private address. Without a viewer password it does not boot.
+        if public_host do
+          # Sign-ins live in the signed session, so they must outlive a deploy.
+          if byte_size(String.trim(System.get_env("SECRET_KEY_BASE", ""))) < 64 do
+            raise "GRM_RELAY_PUBLIC_HOST needs SECRET_KEY_BASE (64 characters or more, " <>
+                    "e.g. from: openssl rand -base64 48), so sign-ins outlive a restart"
+          end
+
+          config :dashboard, DashboardWeb.Endpoint,
+            http: [ip: {0, 0, 0, 0}],
+            url: [
+              host: Dashboard.Relay.parse_public_host!(public_host),
+              scheme: "https",
+              port: 443
+            ]
+        end
 
         {Dashboard.Source.Relay, []}
 

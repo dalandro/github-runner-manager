@@ -4,9 +4,13 @@ defmodule DashboardWeb.IngestController do
   (`Dashboard.Relay`). A runner host sends its `grm-status --json` document
   here with a push token; an accepted document becomes what the page shows.
 
-  The checks run cheapest first: the token, then the size (the body is read
-  only after the token passed, and at most `@max_bytes` of it), then the
-  schema, then the order (`Dashboard.Relay.Inbox.offer/3`). The reply to a
+  The checks run cheapest first: the token, then one push a second
+  (`Dashboard.Relay.Limiter`), then the size (the body is read only after the
+  token passed, and at most `@max_bytes` of it), then the schema, then the
+  order (`Dashboard.Relay.Inbox.offer/3`). A wrong token counts against the
+  client, as a wrong viewer password does, and a locked-out client's guesses
+  get 429. A right token is never counted or refused for others' guesses:
+  the token is too long to guess, and the board must not go stale. The reply to a
   good push is the number of seconds until the next one; a refusal names its
   reason and echoes nothing that was sent.
   """
@@ -16,7 +20,8 @@ defmodule DashboardWeb.IngestController do
   import Plug.Conn
 
   alias Dashboard.{Relay, Status}
-  alias Dashboard.Relay.{Inbox, Ingest}
+  alias Dashboard.Relay.{Inbox, Ingest, Limiter}
+  alias DashboardWeb.Client
 
   # A busy host's document is about 9 KB; a push is never near this.
   @max_bytes 128 * 1024
@@ -26,9 +31,18 @@ defmodule DashboardWeb.IngestController do
   def max_bytes, do: @max_bytes
 
   def create(conn, _params) do
-    case Ingest.authorize(get_req_header(conn, "authorization"), Relay.push_tokens()) do
-      :ok -> read_document(conn)
-      {:error, :unauthorized} -> refuse(conn, :unauthorized)
+    with :ok <- Ingest.authorize(get_req_header(conn, "authorization"), Relay.push_tokens()),
+         :ok <- Limiter.accept_push(Limiter.pushes()) do
+      read_document(conn)
+    else
+      {:error, :unauthorized} ->
+        case Limiter.attempt(Limiter.pushes(), Client.key(conn)) do
+          :ok -> refuse(conn, :unauthorized)
+          {:error, seconds} -> throttled(conn, seconds, "too many wrong push tokens")
+        end
+
+      {:error, seconds} ->
+        throttled(conn, seconds, "one push a second at most")
     end
   end
 
@@ -72,6 +86,12 @@ defmodule DashboardWeb.IngestController do
 
   defp refuse(conn, {:unsupported_schema, _version}),
     do: reply(conn, 422, "document is not schema 1")
+
+  defp throttled(conn, seconds, error) do
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(seconds))
+    |> reply(429, error)
+  end
 
   defp reply(conn, status, error), do: conn |> put_status(status) |> json(%{error: error})
 end

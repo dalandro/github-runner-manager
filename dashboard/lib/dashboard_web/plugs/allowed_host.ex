@@ -13,6 +13,10 @@ defmodule DashboardWeb.Plugs.AllowedHost do
   plugs, so the live socket is covered by `check_origin` instead, which reads
   the same list.
   An SSH tunnel is unaffected: the browser still asks for `localhost`.
+
+  A public relay answers `/robots.txt` under any name: Fly's health check
+  asks the machine directly, not under the public name, and the file is the
+  same for everyone.
   """
 
   @behaviour Plug
@@ -26,7 +30,7 @@ defmodule DashboardWeb.Plugs.AllowedHost do
 
   @impl true
   def call(%Plug.Conn{host: host} = conn, _options) do
-    if AllowedHosts.allowed?(host) do
+    if AllowedHosts.allowed?(host) or health_check?(conn) do
       conn
     else
       conn
@@ -35,4 +39,10 @@ defmodule DashboardWeb.Plugs.AllowedHost do
       |> halt()
     end
   end
+
+  defp health_check?(%Plug.Conn{method: method, path_info: ["robots.txt"]})
+       when method in ["GET", "HEAD"],
+       do: Dashboard.Relay.public?()
+
+  defp health_check?(_conn), do: false
 end

@@ -66,3 +66,18 @@ jobs:
         run: |
           scripts/fetch-test-deps.sh
           test/vendor/bats-core/bin/bats test/dashboard-smoke.bats
+  # The hosted relay's image (docs/relay.md), built and run on loopback here;
+  # CI never pushes or deploys it.
+  relay-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build the image
+        run: docker build -t grm-relay dashboard
+      - name: Smoke test the image on loopback
+        env:
+          GRM_RELAY_IMAGE: grm-relay
+        run: |
+          scripts/fetch-test-deps.sh
+          test/vendor/bats-core/bin/bats test/relay-image.bats

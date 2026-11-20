@@ -39,7 +39,9 @@ bin/grm-status --json    # the document the dashboard reads
 Without a viewer list the dashboard asks no login, so it must stay local; with
 one, served to a private network, only listed viewers see it, from anywhere.
 
-- The endpoint binds 127.0.0.1 only; there is no option to bind anything else.
+- The endpoint binds 127.0.0.1 only; `bin/grm-dashboard` has no option to bind
+  anything else. The one exception is the [hosted relay](relay.md) image,
+  which shows only what the host pushes to it and asks for a password.
 - **Never expose the port**: no port forward, no `0.0.0.0`, no public reverse
   proxy or tunnel. To look from another machine use an SSH tunnel, which keeps
   the request local on the host: `ssh -L 4290:127.0.0.1:4290 user@host`, then
@@ -73,7 +75,7 @@ one, served to a private network, only listed viewers see it, from anywhere.
   configuration; nothing a request carries can reach it.
 - In relay mode, and only there, one route takes input: `POST /ingest`, where
   the runner host pushes its status with a push token. A relay runs no status
-  command. See [Relay mode](#relay-mode-loopback-only-for-now).
+  command. See [Relay mode](#relay-mode).
 - A content security policy allows scripts and styles from the dashboard itself
   only, with no inline code. Values from the status document are escaped by the
   templates.
@@ -106,7 +108,7 @@ version it does not know instead of guessing.
 
 | Module | Job |
 | --- | --- |
-| `Dashboard.Source` | Behaviour for "read the host once". `Source.Command` runs the status command under `timeout`; `Source.Demo` replays the bundled reading; `Source.Relay` serves the last push (see [Relay mode](#relay-mode-loopback-only-for-now)). |
+| `Dashboard.Source` | Behaviour for "read the host once". `Source.Command` runs the status command under `timeout`; `Source.Demo` replays the bundled reading; `Source.Relay` serves the last push (see [Relay mode](#relay-mode)). |
 | `Dashboard.Status` | Parses the document into structs at the boundary. A wrong type or missing field is an error naming the field. Enumerated values map through explicit clauses; no atoms are created from input. |
 | `Dashboard.Overview` | Pure functions for everything derived: runner activity, pool use, queue order, waits, lock condition, load gate, formatting. `now` is always an argument. |
 | `Dashboard.Snapshot` | The latest reading plus whether reading currently fails, and since when. |
@@ -231,13 +233,15 @@ The problem and idle shots use the other demo readings in `dashboard/priv/demo/`
 `GRM_DASHBOARD_DEMO_FILE="$PWD/dashboard/priv/demo/problems.json" bin/grm-dashboard --demo`
 (or `idle.json`; the path must be absolute, since the server runs in `dashboard/`).
 
-## Relay mode (loopback only, for now)
+## Relay mode
 
 A relay shows what a runner host pushes to it instead of reading a host. It is
 the first step towards viewing the board from a phone without a private
 network: the host sends its `grm-status --json` document out, and the relay,
 which can never reach the host, serves the board from the last one it got.
-For now it listens on 127.0.0.1 like every other mode; nothing here is public.
+Started by `bin/grm-dashboard` it listens on 127.0.0.1 like every other mode;
+the [hosted relay](relay.md) is the same mode in a container on Fly.io, with
+a viewer password and rate limits.
 On the host, [`bin/grm-relay-push`](relay-push.md) sends the
 `grm-status --json --public` document; the example below pushes the demo
 document by hand.
@@ -275,9 +279,15 @@ curl --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
   picture and turns to "Stale data": the relay cannot reach the host, it can
   only wait. Before the first push the page says no report has arrived.
 
+- With `GRM_RELAY_VIEWER_PASSWORD` set, the page asks for that password too,
+  on loopback as on the hosted relay, and wrong passwords and tokens are
+  rate-limited ([hosted relay](relay.md#security)).
+
 The relay modules: `Dashboard.Relay` (settings, staleness), `Dashboard.Relay.Ingest`
-(token and order decisions, pure), `Dashboard.Relay.Inbox`, `Dashboard.Source.Relay`
-and `DashboardWeb.IngestController`.
+(token and order decisions, pure), `Dashboard.Relay.Inbox`, `Dashboard.Source.Relay`,
+`DashboardWeb.IngestController`, and for the viewer password and rate limits
+`DashboardWeb.RelayLogin`, `DashboardWeb.Plugs.RelayLogin`,
+`Dashboard.Relay.Throttle` and `Dashboard.Relay.Limiter`.
 
 ## Running it permanently
 

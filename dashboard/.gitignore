@@ -25,3 +25,6 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 dashboard-*.tar
 
+
+# A deployed relay's own Fly config, made from fly.toml.example (docs/relay.md).
+/fly.toml

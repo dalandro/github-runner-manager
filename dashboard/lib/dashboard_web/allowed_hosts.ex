@@ -9,6 +9,10 @@ defmodule DashboardWeb.AllowedHosts do
   listed name widens which `Host` and `Origin` values are believed, nothing
   else. Names match exactly: no wildcards, no suffixes, no ports.
 
+  A public relay (`Dashboard.Relay.public_host/0`, docs/relay.md) answers to
+  its public name only, and its socket to `https` pages only: it is reached
+  through Fly's HTTPS, never on loopback.
+
   One list feeds the three places a name is checked, so they cannot drift:
   the `Host` header (`DashboardWeb.Plugs.AllowedHost`), the origin of the
   live socket (`origin_allowed?/1`, the endpoint's `check_origin`) and the
@@ -24,11 +28,17 @@ defmodule DashboardWeb.AllowedHosts do
 
   @doc "Every allowed name, loopback first. Raises on an invalid setting."
   @spec list() :: [String.t()]
-  def list, do: @loopback ++ parse!(Application.get_env(:dashboard, :allowed_hosts))
+  def list do
+    if host = Dashboard.Relay.public_host() do
+      [host]
+    else
+      @loopback ++ parse!(Application.get_env(:dashboard, :allowed_hosts))
+    end
+  end
 
-  @doc "Whether the operator allowed any name beyond loopback."
+  @doc "Whether the operator allowed a name beyond loopback for a private-network proxy."
   @spec extra?() :: boolean()
-  def extra?, do: list() != @loopback
+  def extra?, do: parse!(Application.get_env(:dashboard, :allowed_hosts)) != []
 
   @doc """
   The names in a comma-separated setting, lower-cased. Raises `ArgumentError`
@@ -47,6 +57,14 @@ defmodule DashboardWeb.AllowedHosts do
     |> Enum.uniq()
   end
 
+  @doc "Whether a string is one plain host name, lower-case: no scheme, port, path or wildcard."
+  @spec host_name?(String.t()) :: boolean()
+  def host_name?(name), do: byte_size(name) <= 253 and Regex.match?(@host_name, name)
+
+  @doc "Whether a name is one of the loopback names."
+  @spec loopback?(String.t()) :: boolean()
+  def loopback?(name), do: name in @loopback
+
   @doc "Whether a `Host` header value (without its port) is an allowed name."
   @spec allowed?(String.t() | nil) :: boolean()
   def allowed?(host) when is_binary(host), do: String.downcase(host, :ascii) in list()
@@ -54,12 +72,15 @@ defmodule DashboardWeb.AllowedHosts do
 
   @doc """
   Whether a page from this origin may open the live socket: its host must be
-  an allowed name. The scheme must be `http` or `https`; the port is not
-  compared, as with Phoenix's own `//host` origins.
+  an allowed name. The scheme must be `http` or `https` (`https` only for a
+  public relay); the port is not compared, as with Phoenix's own `//host`
+  origins.
   """
   @spec origin_allowed?(URI.t()) :: boolean()
-  def origin_allowed?(%URI{scheme: scheme, host: host}) when scheme in ["http", "https"],
-    do: allowed?(host)
+  def origin_allowed?(%URI{scheme: "https", host: host}), do: allowed?(host)
+
+  def origin_allowed?(%URI{scheme: "http", host: host}),
+    do: Dashboard.Relay.public_host() == nil and allowed?(host)
 
   def origin_allowed?(%URI{}), do: false
 
@@ -71,8 +92,8 @@ defmodule DashboardWeb.AllowedHosts do
   """
   @spec content_security_policy() :: String.t()
   def content_security_policy do
-    sockets =
-      Enum.map(@loopback, &"ws://#{&1}:*") ++ Enum.map(list() -- @loopback, &"wss://#{&1}:*")
+    {loopback, extra} = Enum.split_with(list(), &loopback?/1)
+    sockets = Enum.map(loopback, &"ws://#{&1}:*") ++ Enum.map(extra, &"wss://#{&1}:*")
 
     "default-src 'self'; img-src 'self' data:; " <>
       "connect-src 'self' #{Enum.join(sockets, " ")}; " <>
@@ -82,7 +103,7 @@ defmodule DashboardWeb.AllowedHosts do
   defp host_name!(name) do
     name = String.downcase(name, :ascii)
 
-    if byte_size(name) <= 253 and Regex.match?(@host_name, name) do
+    if host_name?(name) do
       name
     else
       raise ArgumentError,

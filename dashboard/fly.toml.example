@@ -1,0 +1,42 @@
+# The hosted relay on Fly.io (docs/relay.md). Copy it to fly.toml (not
+# tracked), replace both placeholders, and deploy from this directory.
+# Secrets go in with `fly secrets import`, never here.
+
+app = "<your-app-name>"
+primary_region = "<region>"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # The relay's public name; it also turns on the public bind, HSTS and the
+  # viewer password (docs/relay.md).
+  GRM_RELAY_PUBLIC_HOST = "<your-app-name>.fly.dev"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # One small machine. Pushes every few seconds keep it up; it suspends only
+  # once pushes and visits stop, and wakes on the next request.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  # Fly's proxy stops passing requests past these; the relay's own limits
+  # (docs/relay.md) sit behind them. Counted in requests, so idle keep-alive
+  # connections at Fly's edge use none; an open board's live socket uses one.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 50
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/robots.txt"
+    interval = "60s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

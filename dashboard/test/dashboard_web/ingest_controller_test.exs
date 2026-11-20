@@ -3,14 +3,14 @@ defmodule DashboardWeb.IngestControllerTest do
   # inbox the controller writes to.
   use DashboardWeb.ConnCase, async: false
 
-  alias Dashboard.Relay.Inbox
+  alias Dashboard.Relay.{Inbox, Limiter}
   alias Dashboard.{Fixtures, Status}
   alias DashboardWeb.IngestController
 
   @token String.duplicate("t", 32)
   @old_token String.duplicate("o", 40)
 
-  defp relay_mode(_context) do
+  defp relay_mode(context) do
     Application.put_env(:dashboard, :relay,
       push_tokens: "#{@token},#{@old_token}",
       interval_seconds: 5
@@ -18,6 +18,13 @@ defmodule DashboardWeb.IngestControllerTest do
 
     on_exit(fn -> Application.delete_env(:dashboard, :relay) end)
     start_supervised!(Inbox)
+    # Most tests push several times in a row; the rate limit has its own.
+    start_supervised!({Limiter, name: Limiter.viewers()})
+
+    start_supervised!(
+      {Limiter, name: Limiter.pushes(), push_interval_ms: context[:push_interval_ms] || 0}
+    )
+
     :ok
   end
 
@@ -116,6 +123,45 @@ defmodule DashboardWeb.IngestControllerTest do
       conn = conn |> put_req_header("accept", "text/html") |> push_document("not json")
 
       assert json_response(conn, 422)["error"]
+    end
+
+    @tag push_interval_ms: 1_000
+    test "takes one push a second", %{conn: conn} do
+      assert conn |> push_document(demo_document()) |> json_response(200)
+
+      conn = push_document(conn, demo_document())
+      assert json_response(conn, 429)["error"] =~ "one push a second"
+      assert get_resp_header(conn, "retry-after") == ["1"]
+    end
+
+    test "after ten wrong tokens refuses the client's guesses for ten minutes", %{conn: conn} do
+      for _attempt <- 1..10 do
+        assert conn |> push_document(demo_document(), @token <> "x") |> json_response(401)
+      end
+
+      conn = push_document(conn, demo_document(), @token <> "x")
+      assert json_response(conn, 429)["error"] =~ "too many wrong push tokens"
+      assert [seconds] = get_resp_header(conn, "retry-after")
+      assert String.to_integer(seconds) in 599..600
+      assert Inbox.latest(Inbox) == nil
+    end
+
+    test "takes a right token whatever others guessed, so the board never goes stale for it",
+         %{conn: conn} do
+      for client <- 1..10, _attempt <- 1..10 do
+        conn
+        |> Map.put(:remote_ip, {198, 51, 100, client})
+        |> push_document(demo_document(), @token <> "x")
+      end
+
+      assert conn |> push_document(demo_document(), @token <> "x") |> json_response(429)
+      assert conn |> push_document(demo_document()) |> json_response(200)
+    end
+
+    test "counts no right token, so a busy host is never locked out", %{conn: conn} do
+      for _attempt <- 1..20 do
+        assert conn |> push_document(demo_document()) |> json_response(200)
+      end
     end
 
     test "sets no cookie", %{conn: conn} do
