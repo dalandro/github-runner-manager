@@ -19,7 +19,12 @@ defmodule DashboardWeb.IngestControllerTest do
     on_exit(fn -> Application.delete_env(:dashboard, :relay) end)
     start_supervised!(Inbox)
     # Most tests push several times in a row; the rate limit has its own.
-    start_supervised!({Limiter, push_interval_ms: context[:push_interval_ms] || 0})
+    start_supervised!({Limiter, name: Limiter.viewers()})
+
+    start_supervised!(
+      {Limiter, name: Limiter.pushes(), push_interval_ms: context[:push_interval_ms] || 0}
+    )
+
     :ok
   end
 

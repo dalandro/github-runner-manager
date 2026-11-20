@@ -43,16 +43,16 @@ defmodule DashboardWeb.Plugs.RelayLogin do
   defp attempt(conn, headers, password) do
     key = Client.key(conn)
 
-    with :ok <- Limiter.attempt(key),
+    with :ok <- Limiter.attempt(Limiter.viewers(), key),
          :ok <- RelayLogin.check(headers, password) do
-      Limiter.forgive(key)
+      Limiter.forgive(Limiter.viewers(), key)
       sign_in(conn, password)
     else
       {:error, seconds} ->
         throttled(conn, seconds)
 
       :missing ->
-        Limiter.forgive(key)
+        Limiter.forgive(Limiter.viewers(), key)
         ask(conn)
 
       :wrong ->

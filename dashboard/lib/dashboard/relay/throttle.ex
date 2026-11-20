@@ -1,7 +1,7 @@
 defmodule Dashboard.Relay.Throttle do
   @moduledoc """
   The rate limits of a public relay, as pure functions on a struct:
-  `Dashboard.Relay.Limiter` holds one and the request processes ask it.
+  each `Dashboard.Relay.Limiter` process holds one, and request processes ask it.
 
     * Sign-in and push attempts, per client: an attempt counts as wrong until
       it is forgiven (`forgive/2`, once the password or token matched), so

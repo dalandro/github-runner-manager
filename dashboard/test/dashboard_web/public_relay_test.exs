@@ -21,7 +21,8 @@ defmodule DashboardWeb.PublicRelayTest do
 
     on_exit(fn -> Application.delete_env(:dashboard, :relay) end)
     start_supervised!(Inbox)
-    start_supervised!({Limiter, push_interval_ms: 0})
+    start_supervised!({Limiter, name: Limiter.viewers()})
+    start_supervised!({Limiter, name: Limiter.pushes(), push_interval_ms: 0})
     Dashboard.subscribe()
     start_supervised!({Dashboard.Poller, source: {Dashboard.Source.Demo, []}})
     assert_receive {:snapshot, %Dashboard.Snapshot{}}
@@ -143,6 +144,20 @@ defmodule DashboardWeb.PublicRelayTest do
              |> with_password()
              |> get("/")
              |> html_response(200)
+    end
+
+    test "wrong push tokens never stop a viewer signing in", %{conn: conn} do
+      for client <- 1..10, _attempt <- 1..10 do
+        conn
+        |> public()
+        |> from("198.51.100.#{client}")
+        |> put_req_header("authorization", "Bearer #{@token}x")
+        |> put_req_header("content-type", "application/json")
+        |> post("/ingest", "{}")
+      end
+
+      conn = conn |> public() |> from("198.51.100.99") |> with_password() |> get("/")
+      assert html_response(conn, 200) =~ "org/mobile-app"
     end
 
     test "tells browsers to keep to HTTPS and search engines to stay away", %{conn: conn} do

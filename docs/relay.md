@@ -53,7 +53,8 @@ and from Fly secrets (the other three).
     already signed in keeps the board.
   - A right push token is never refused for anyone's wrong guesses: a token
     of 32 or more random characters cannot be guessed, and the board must not
-    go stale. Only wrong tokens are counted.
+    go stale. Only wrong tokens are counted, and on their own: they never
+    fill the viewers' global cap.
   - One accepted push a second.
   - Fly's proxy caps connections at 25 per machine (`fly.toml.example`).
 - **Client address.** `Fly-Client-IP`, read with a public name only; anywhere

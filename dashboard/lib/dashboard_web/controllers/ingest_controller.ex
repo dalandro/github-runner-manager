@@ -32,11 +32,11 @@ defmodule DashboardWeb.IngestController do
 
   def create(conn, _params) do
     with :ok <- Ingest.authorize(get_req_header(conn, "authorization"), Relay.push_tokens()),
-         :ok <- Limiter.accept_push() do
+         :ok <- Limiter.accept_push(Limiter.pushes()) do
       read_document(conn)
     else
       {:error, :unauthorized} ->
-        case Limiter.attempt(Client.key(conn)) do
+        case Limiter.attempt(Limiter.pushes(), Client.key(conn)) do
           :ok -> refuse(conn, :unauthorized)
           {:error, seconds} -> throttled(conn, seconds, "too many wrong push tokens")
         end
