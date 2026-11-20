@@ -1,7 +1,7 @@
 # Relay push
 
 `bin/grm-relay-push` sends this host's status to a relay (the dashboard in
-[relay mode](dashboard.md#relay-mode-loopback-only-for-now)) every few
+[relay mode](dashboard.md#relay-mode)) every few
 seconds. The host only makes outbound requests: nothing listens, and the
 relay's reply sets the next push time and nothing else. It is in no job's
 path and writes no gate state.
