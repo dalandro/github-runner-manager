@@ -61,8 +61,9 @@ and from Fly secrets (the other three).
     fill the viewers' global cap. A locked-out client still learns whether
     a token is right, so a token must be random, never chosen.
   - One accepted push a second.
-  - Fly's proxy caps the machine at 50 requests in flight
-    (`fly.toml.example`); an open board's live socket counts as one.
+  - Fly's proxy caps the machine at 25 requests in flight
+    (`fly.toml.example`), below the 32 connections the server takes; an open
+    board's live socket counts as one.
 - **Live socket.** With a viewer password it refuses to connect without a
   sign-in, so nobody without the password can hold connections open.
 - **Client address.** `Fly-Client-IP`, read only with a public name on a Fly
