@@ -65,7 +65,7 @@ if config_env() != :test do
         # private address. Without a viewer password it does not boot.
         if public_host do
           # Sign-ins live in the signed session, so they must outlive a deploy.
-          if byte_size(System.get_env("SECRET_KEY_BASE", "")) < 64 do
+          if byte_size(String.trim(System.get_env("SECRET_KEY_BASE", ""))) < 64 do
             raise "GRM_RELAY_PUBLIC_HOST needs SECRET_KEY_BASE (64 characters or more, " <>
                     "e.g. from: openssl rand -base64 48), so sign-ins outlive a restart"
           end
