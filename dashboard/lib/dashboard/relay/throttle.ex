@@ -37,7 +37,7 @@ defmodule Dashboard.Relay.Throttle do
 
   @type key :: String.t()
   @type t :: %__MODULE__{
-          failures: %{key() => [integer()]},
+          failures: %{key() => [{integer(), :global | :known}]},
           locks: %{key() => integer()},
           global: [integer()],
           known: [integer()],
@@ -67,7 +67,7 @@ defmodule Dashboard.Relay.Throttle do
         {:error, seconds(until - now)}
 
       length(throttle.global) < @global ->
-        {:ok, %{count(throttle, key, now) | global: [now | throttle.global]}}
+        {:ok, %{count(throttle, key, now, :global) | global: [now | throttle.global]}}
 
       not known? ->
         {:error, seconds(List.last(throttle.global) + @global_window - now)}
@@ -76,12 +76,13 @@ defmodule Dashboard.Relay.Throttle do
         {:error, seconds(List.last(throttle.known) + @global_window - now)}
 
       true ->
-        {:ok, %{count(throttle, key, now) | known: [now | throttle.known]}}
+        {:ok, %{count(throttle, key, now, :known) | known: [now | throttle.known]}}
     end
   end
 
-  defp count(throttle, key, now) do
-    failures = [now | Map.get(throttle.failures, key, [])]
+  # Each failure remembers which cap it counted in, for forgive/2.
+  defp count(throttle, key, now, cap) do
+    failures = [{now, cap} | Map.get(throttle.failures, key, [])]
 
     locks =
       if length(failures) >= @per_client,
@@ -95,7 +96,7 @@ defmodule Dashboard.Relay.Throttle do
   @spec forgive(t(), key()) :: t()
   def forgive(%__MODULE__{} = throttle, key) do
     case Map.get(throttle.failures, key, []) do
-      [latest | earlier] ->
+      [{latest, cap} | earlier] ->
         throttle = %{
           throttle
           | failures: put_or_drop(throttle.failures, key, earlier),
@@ -106,10 +107,10 @@ defmodule Dashboard.Relay.Throttle do
               )
         }
 
-        # The attempt was counted in one of the two caps.
-        if latest in throttle.global,
-          do: %{throttle | global: List.delete(throttle.global, latest)},
-          else: %{throttle | known: List.delete(throttle.known, latest)}
+        case cap do
+          :global -> %{throttle | global: List.delete(throttle.global, latest)}
+          :known -> %{throttle | known: List.delete(throttle.known, latest)}
+        end
 
       [] ->
         throttle
@@ -144,8 +145,8 @@ defmodule Dashboard.Relay.Throttle do
 
   defp prune(throttle, now) do
     failures =
-      for {key, times} <- throttle.failures,
-          recent = Enum.filter(times, &(&1 > now - @client_window)),
+      for {key, attempts} <- throttle.failures,
+          recent = Enum.filter(attempts, fn {at, _cap} -> at > now - @client_window end),
           recent != [],
           into: %{},
           do: {key, recent}
