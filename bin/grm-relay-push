@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=lib/common.sh
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+# shellcheck source=lib/relay.sh
+source "$GRM_ROOT/lib/relay.sh"
+# Pushes `grm-status --json --public` to a relay (GRM_RELAY_URL) every few
+# seconds, outbound only. The relay's reply only sets the next push time.
+# The token reaches curl through a config on a file descriptor, never argv.
+# Failures back off to five minutes; the first one and the recovery are
+# logged, nothing else. --once pushes once and says whether it worked.
+# See docs/relay-push.md.
+once=0
+case ${1:-} in
+  --once) once=1; shift;;
+esac
+(($# == 0)) || usage_error 'usage: grm-relay-push [--once]'
+
+say() { printf 'grm-relay-push: %s\n' "$*" >&2; }
+
+protocol=$(relay_url_protocol "$GRM_RELAY_URL") ||
+  usage_error 'grm-relay-push: GRM_RELAY_URL must be an https URL (http only to 127.0.0.1 or [::1]); see docs/relay-push.md'
+relay_read_token "$GRM_RELAY_TOKEN_FILE" > /dev/null || usage_error 'grm-relay-push: no usable push token; see docs/relay-push.md'
+
+loopback=()
+if [[ $protocol == http ]]; then loopback=(--noproxy '*'); fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# One push. Sets interval from the relay's reply, or reason on failure.
+push() {
+  local token document code
+  # Read every time, so a rotated token needs no restart.
+  token=$(relay_read_token "$GRM_RELAY_TOKEN_FILE" 2> "$work/error") || { reason=$(<"$work/error"); return 1; }
+  document=$(timeout -k 5 60 "$GRM_ROOT/bin/grm-status" --json --public 2> /dev/null) ||
+    { reason="grm-status --json --public failed (exit $?)"; return 1; }
+  if ((${#document} > 131072)); then reason='status document over 128 KB'; return 1; fi
+  : > "$work/reply"
+  # -q first: no ~/.curlrc may redirect the token, turn off TLS checks or add
+  # a proxy. A relay on this machine is never reached through a proxy.
+  code=$(curl -q --silent --globoff "${loopback[@]}" --max-time 15 --connect-timeout 10 --proto "=$protocol" \
+    --config <(printf 'header = "Authorization: Bearer %s"\n' "$token") \
+    --header 'Content-Type: application/json' --data-binary @- \
+    --max-filesize 4096 --output "$work/reply" --write-out '%{http_code}' \
+    -- "$GRM_RELAY_URL" < <(printf '%s' "$document")) || { reason="curl exit $?"; return 1; }
+  if [[ $code != 200 ]]; then reason="HTTP $code"; return 1; fi
+  interval=$(relay_next_interval "$(head -c 4096 "$work/reply")")
+}
+
+interval=5 failures=0 reason=''
+while :; do
+  if push; then
+    if ((once)); then say pushed; exit 0; fi
+    if ((failures)); then say "pushed again after $failures failed attempts"; fi
+    failures=0 delay=$interval
+  else
+    if ((once)); then say "push failed: $reason"; exit 1; fi
+    if ((!failures)); then say "push failed: $reason; retrying with backoff, quiet until a push works"; fi
+    failures=$((failures + 1))
+    delay=$(relay_backoff "$failures" "$interval" "$RANDOM")
+  fi
+  sleep "$delay"
+done

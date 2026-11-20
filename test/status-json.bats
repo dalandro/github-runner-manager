@@ -169,35 +169,153 @@ fake_proc() {
   [ "$(json 'document["events"][-1]["detail"]')" = 'tab?here caf??' ]
 }
 
-@test "the bundled demo fixture has exactly the shape of real json status" {
+# An installation where every field of json status has a value: two runners
+# (one busy), a slot holder whose job the hook recorded in full, the device
+# lock held by a job, a stale lock holder, and their events. Demo names.
+full_installation() {
   command -v python3 > /dev/null || skip 'python3 is needed to parse JSON in tests'
-  stub_systemctl; write_config; fake_proc
-  export GRM_WATCHDOG_MIN_AGE=0
+  fake_proc
+  export GRM_CONFIG="$BATS_TEST_TMPDIR/config.env" GRM_SYSTEMCTL=true GRM_WATCHDOG_MIN_AGE=0
+  cat > "$GRM_CONFIG" <<'CONFIG'
+GRM_RUNNERS=(
+  "mobile-app org/mobile-app 3 self-hosted,linux,emulator"
+  "web-app org/web-app 1 self-hosted,linux"
+)
+CONFIG
+  printf '{"pull_request": {"number": 57, "title": "Keep drafts while offline"}}' > "$BATS_TEST_TMPDIR/event.json"
   start_holder
-  "$GRM_ROOT/bin/job-slots" acquire --holder "$holder" --units 1 --label org/repo-a
-  GITHUB_REPOSITORY=org/repo-a "$GRM_ROOT/bin/with-device-lock" -- sleep 300 > /dev/null 2>&1 &
-  wrapper=$!; processes+=("$wrapper")
-  wait_for test -s "$GRM_DEVICE_LOCK.holder"
+  GRM_JOB_UNITS=3 GITHUB_REPOSITORY=org/mobile-app GITHUB_WORKFLOW=Android GITHUB_JOB=e2e-android \
+    GITHUB_RUN_ID=8123456789 GITHUB_RUN_ATTEMPT=1 GITHUB_REF=refs/pull/57/merge \
+    GITHUB_HEAD_REF=feature/offline-drafts GITHUB_SHA=3f9a1c27d84be5a0c6f1e2d93b7a4c58e1d06b72 \
+    GITHUB_EVENT_NAME=pull_request GITHUB_ACTOR=dev-alex RUNNER_NAME=mobile-app \
+    GITHUB_SERVER_URL=https://github.example.com GITHUB_EVENT_PATH="$BATS_TEST_TMPDIR/event.json" \
+    "$GRM_ROOT/hooks/job-started.sh" --holder "$holder"
+  # The lock as with-device-lock records it, held by a process that is not the
+  # recorded holder: a stale holder beside a live one.
+  start_holder
+  printf 'org/mobile-app 8123456789 e2e-android %s %s %s\n' "$holder" \
+    "$(bash -c 'source "$1/lib/common.sh"; get_start_time "$2"' _ "$GRM_ROOT" "$holder")" "$(date +%s)" > "$GRM_DEVICE_LOCK.holder"
+  bash -c 'exec 17>"$1"; flock 17; sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$2"' _ "$GRM_DEVICE_LOCK" "$BATS_TEST_TMPDIR/leaked"
+  processes+=("$(<"$BATS_TEST_TMPDIR/leaked")")
+  printf '%s lock-acquire org/mobile-app job e2e-android\n' "$(date +%s)" >> "$GRM_STATE_DIR/events.log"
   export GRM_WORKER_COMM=Fake.Worker
-  mkdir -p "$GRM_RUNNERS_DIR/repo-a/bin"
-  cp "$(command -v bash)" "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker"
+  mkdir -p "$GRM_RUNNERS_DIR/mobile-app/bin"
+  cp "$(command -v bash)" "$GRM_RUNNERS_DIR/mobile-app/bin/Fake.Worker"
   mkfifo "$BATS_TEST_TMPDIR/idle"
-  "$GRM_RUNNERS_DIR/repo-a/bin/Fake.Worker" -c 'exec 3<> "$1"; read -r -u 3 _' _ "$BATS_TEST_TMPDIR/idle" &
+  "$GRM_RUNNERS_DIR/mobile-app/bin/Fake.Worker" -c 'exec 3<> "$1"; read -r -u 3 _' _ "$BATS_TEST_TMPDIR/idle" &
   processes+=("$!")
   wait_for grep -qx Fake.Worker "/proc/$!/comm"
-  bash -c 'exec 17>"$1"; sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$2"' _ "$GRM_DEVICE_LOCK" "$BATS_TEST_TMPDIR/leaked"
-  processes+=("$(<"$BATS_TEST_TMPDIR/leaked")")
+}
+
+# Key paths as lib/public.sh names them: no leading dot, no list markers.
+field_paths() {
+  key_paths | sed -e 's/^[.]//' -e 's/\[\]//g'
+}
+
+@test "the bundled demo fixture has exactly the shape of real json status" {
+  full_installation
   "$GRM_ROOT/bin/grm-status" --json | key_paths > "$BATS_TEST_TMPDIR/real"
   key_paths < "$GRM_ROOT/dashboard/priv/demo/status.json" > "$BATS_TEST_TMPDIR/demo"
-  kill -TERM "$wrapper"; wait "$wrapper" || true
-  # The demo has no stale holder; real output here may. Compare the rest.
+  # The demo has no stale holder; real output here has one. Compare the rest.
   diff <(grep -v 'watchdog.stale' "$BATS_TEST_TMPDIR/real") <(grep -v 'watchdog.stale' "$BATS_TEST_TMPDIR/demo")
+}
+
+@test "every field of json status has a public class, and every class a field" {
+  full_installation
+  "$GRM_ROOT/bin/grm-status" --json | field_paths > "$BATS_TEST_TMPDIR/fields"
+  # A new field fails here until lib/public.sh says what --public does with it.
+  diff "$BATS_TEST_TMPDIR/fields" <(bash -c 'source "$1/lib/common.sh"; source "$1/lib/public.sh"; public_classes' _ "$GRM_ROOT" | cut -d' ' -f1 | LC_ALL=C sort)
+}
+
+@test "public json has the shape of json status and names nothing on this machine" {
+  full_installation
+  "$GRM_ROOT/bin/grm-status" --json | key_paths > "$BATS_TEST_TMPDIR/private"
+  run "$GRM_ROOT/bin/grm-status" --json --public
+  [ "$status" -eq 0 ]
+  diff "$BATS_TEST_TMPDIR/private" <(key_paths <<< "$output")
+  for private in mobile-app web-app org/ self-hosted grm-runner- Android e2e-android 8123456789 \
+    refs/ feature/offline-drafts 3f9a1c2 dev-alex github.example.com 'Keep drafts' \
+    "$BATS_TEST_TMPDIR" "$HOME"; do
+    [[ $output != *"$private"* ]] || { echo "public json contains $private"; return 1; }
+  done
+  [ "$(json '[(r["name"], r["repository"], r["labels"], r["unit"]) for r in document["runners"]]')" = \
+    "[('runner-1', 'repo-1', '', 'runner-1.service'), ('runner-2', 'repo-2', '', 'runner-2.service')]" ]
+  [ "$(json '[w["directory"] for w in document["workers"]]')" = "['runner-1']" ]
+  [ "$(json 'document["slots"]["records"][0]["label"], document["device_lock"]["holder"]["repository"]')" = "('repo-1', 'repo-1')" ]
+  [ "$(json 'sorted({k: v for k, v in document["slots"]["records"][0]["job"].items() if v is not None})')" = "['queued_at', 'repository', 'runner']" ]
+  [ "$(json '[document["device_lock"]["holder"][k] for k in ("run_id", "job")]')" = "['', '']" ]
+  [ "$(json '[e["detail"] for e in document["events"] if e["kind"] == "lock-acquire"]')" = "['']" ]
+  [ "$(json '[e["detail"] for e in document["events"] if e["kind"] == "admit"][0].startswith("ticket ")')" = True ]
+}
+
+@test "public json replaces every value that is not kept, field by field" {
+  full_installation
+  "$GRM_ROOT/bin/grm-status" --json > "$BATS_TEST_TMPDIR/private.json"
+  "$GRM_ROOT/bin/grm-status" --json --public > "$BATS_TEST_TMPDIR/public.json"
+  bash -c 'source "$1/lib/common.sh"; source "$1/lib/public.sh"; public_classes' _ "$GRM_ROOT" > "$BATS_TEST_TMPDIR/classes"
+  # Catches a field that has a class but whose value skips public_field: its
+  # real value would reach the public copy unchanged. Events are kept by
+  # public_subject and public_detail where they hold no names (other tests).
+  run python3 -c '
+import json, sys
+private, public = (json.load(open(name)) for name in sys.argv[1:3])
+classes = dict(line.split() for line in open(sys.argv[3]))
+seen, leaked = set(), []
+def walk(mine, theirs, path):
+    if isinstance(mine, dict):
+        for key in mine:
+            walk(mine[key], theirs[key], path + [key])
+    elif isinstance(mine, list):
+        for item, other in zip(mine, theirs):
+            walk(item, other, path)
+    else:
+        name = ".".join(path)
+        if classes[name] == "keep" or name.startswith("events.") or mine in (None, ""):
+            return
+        seen.add(name)
+        if theirs == mine:
+            leaked.append(f"{name}: {mine!r}")
+walk(private, public, [])
+untested = sorted(name for name, kind in classes.items() if kind != "keep" and not name.startswith("events.") and name not in seen)
+print("\n".join(leaked + [f"no value to test in {name}" for name in untested]))
+' "$BATS_TEST_TMPDIR/private.json" "$BATS_TEST_TMPDIR/public.json" "$BATS_TEST_TMPDIR/classes"
+  [ "$status" -eq 0 ]
+  [ "$output" = '' ] || { echo "$output"; return 1; }
+}
+
+@test "GRM_RELAY_SHARE_DETAILS=1 sends names, job details and links, never paths, labels or the actor" {
+  full_installation
+  GRM_RELAY_SHARE_DETAILS=1 run "$GRM_ROOT/bin/grm-status" --json --public
+  [ "$status" -eq 0 ]
+  [ "$(json '[(r["name"], r["repository"], r["labels"]) for r in document["runners"]]')" = \
+    "[('mobile-app', 'org/mobile-app', ''), ('web-app', 'org/web-app', '')]" ]
+  [ "$(json '[w["directory"] for w in document["workers"]]')" = "['mobile-app']" ]
+  [ "$(json '[document["slots"]["records"][0]["job"][k] for k in ("run_id", "pull_request", "pull_request_title", "server_url", "actor")]')" = \
+    "['8123456789', 57, 'Keep drafts while offline', 'https://github.example.com', None]" ]
+  [ "$(json '[e["detail"] for e in document["events"] if e["kind"] == "lock-acquire"]')" = "['job e2e-android']" ]
+  [[ $output != *"$BATS_TEST_TMPDIR"* && $output != *dev-alex* ]]
+}
+
+@test "public json refuses to print a field that has no public class" {
+  full_installation
+  mkdir "$BATS_TEST_TMPDIR/copy"
+  cp -r "$GRM_ROOT/bin" "$GRM_ROOT/lib" "$BATS_TEST_TMPDIR/copy"
+  sed -i 's/ \[events.detail\]=numeric//' "$BATS_TEST_TMPDIR/copy/lib/public.sh"
+  ! grep -q 'events.detail' "$BATS_TEST_TMPDIR/copy/lib/public.sh"
+  run "$BATS_TEST_TMPDIR/copy/bin/grm-status" --json --public
+  [ "$status" -eq 70 ]
+  [[ $output == *'events.detail has no public class'* ]]
+  [[ $output != *'"schema"'* ]]
 }
 
 @test "status rejects unknown arguments" {
   run "$GRM_ROOT/bin/grm-status" --yaml
   [ "$status" -eq 2 ]
   run "$GRM_ROOT/bin/grm-status" --json extra
+  [ "$status" -eq 2 ]
+  run "$GRM_ROOT/bin/grm-status" --public
+  [ "$status" -eq 2 ]
+  run "$GRM_ROOT/bin/grm-status" --json --public extra
   [ "$status" -eq 2 ]
   run "$GRM_ROOT/bin/grm-status" --watch soon
   [ "$status" -eq 2 ]

@@ -1,0 +1,28 @@
+# Template for pushing this host's public status to a relay as a systemd user
+# unit, as the runners' account. Set GRM_RELAY_URL in config.env and write the
+# push token to ~/.config/grm/relay-token (chmod 600); check with
+# `bin/grm-relay-push --once`. Then replace @GRM_ROOT@ with the absolute path
+# of this checkout, save the result as
+# ~/.config/systemd/user/grm-relay-push.service, and:
+#   systemctl --user daemon-reload && systemctl --user enable --now grm-relay-push
+# See docs/relay-push.md. Outbound HTTPS only; nothing listens.
+[Unit]
+Description=github-runner-manager relay push (outbound only)
+# No After=network-online.target: a user manager cannot see it. Pushes before
+# the network is up fail and back off until it is.
+
+[Service]
+Type=exec
+ExecStart=@GRM_ROOT@/bin/grm-relay-push
+# A bad URL or token file exits 2; retry slowly once it is fixed.
+Restart=on-failure
+RestartSec=60
+# Never in a job's way: lowest CPU and I/O priority, small caps.
+Nice=19
+IOSchedulingClass=idle
+NoNewPrivileges=true
+MemoryMax=64M
+TasksMax=32
+
+[Install]
+WantedBy=default.target
