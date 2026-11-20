@@ -4,9 +4,10 @@ defmodule DashboardWeb.Client do
 
   A public relay sits behind Fly's proxy, so every connection comes from the
   proxy; Fly puts the client's address in `Fly-Client-IP`. That header is read
-  in public relay mode only: anywhere else any client could set it. A missing
-  or malformed header falls back to the connection's address, which on Fly
-  puts all such requests under one key.
+  on a public relay on a Fly machine only (`Dashboard.Relay.behind_fly?/0`):
+  anywhere else any client could set it. A missing or malformed header falls
+  back to the connection's address, which on Fly puts all such requests under
+  one key.
   """
 
   alias Dashboard.Relay
@@ -17,13 +18,13 @@ defmodule DashboardWeb.Client do
   def key(%Plug.Conn{} = conn), do: conn |> address() |> Throttle.client_key()
 
   defp address(conn) do
-    with true <- Relay.public?(),
+    with true <- Relay.behind_fly?(),
          [value] <- Plug.Conn.get_req_header(conn, "fly-client-ip"),
          {:ok, address} <-
            value |> String.trim() |> String.to_charlist() |> :inet.parse_strict_address() do
       address
     else
-      _not_public_or_unusable -> conn.remote_ip
+      _not_on_fly_or_unusable -> conn.remote_ip
     end
   end
 end

@@ -29,7 +29,8 @@ setup_file() {
   container=grm-relay-smoke-$$
   echo "$container" > "$BATS_FILE_TMPDIR/container"
   # Not --rm: a container that dies at boot stays, so its log can be shown.
-  docker run -d --name "$container" -p "127.0.0.1:$port:8080" \
+  # FLY_APP_NAME as Fly sets it, so Fly-Client-IP is read as behind its proxy.
+  docker run -d --name "$container" -p "127.0.0.1:$port:8080" -e FLY_APP_NAME=relay-example \
     -e GRM_RELAY_PUBLIC_HOST=$public_host -e GRM_RELAY_PUSH_TOKENS=$token \
     -e GRM_RELAY_VIEWER_PASSWORD=$password \
     -e SECRET_KEY_BASE="$(head -c 48 /dev/urandom | base64 -w0)" \

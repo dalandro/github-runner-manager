@@ -27,7 +27,7 @@ and from Fly secrets (the other three).
 
 | Setting | Meaning |
 | --- | --- |
-| `GRM_RELAY_PUBLIC_HOST` | The relay's public name, e.g. `<your-app-name>.fly.dev`. Turns on the public bind (0.0.0.0), HSTS, `X-Robots-Tag: noindex` and `Fly-Client-IP`. Relay mode only; the server refuses to boot with it in any other mode. |
+| `GRM_RELAY_PUBLIC_HOST` | The relay's public name, e.g. `<your-app-name>.fly.dev`. Turns on the public bind (0.0.0.0), HSTS and `X-Robots-Tag: noindex`, and with Fly's `FLY_APP_NAME` (set on its machines), `Fly-Client-IP`. Relay mode only; the server refuses to boot with it in any other mode. |
 | `GRM_RELAY_VIEWER_PASSWORD` | The password the browser asks for: 16 or more visible characters. Required with a public name; optional on loopback. |
 | `GRM_RELAY_PUSH_TOKENS` | As in [relay mode](dashboard.md#relay-mode): 32 or more characters each, comma-separated to rotate. |
 | `SECRET_KEY_BASE` | Signs the session cookie. Required with a public name, 64 or more characters, so a sign-in outlives a restart. |
@@ -64,9 +64,11 @@ and from Fly secrets (the other three).
     (`fly.toml.example`); an open board's live socket counts as one.
 - **Live socket.** With a viewer password it refuses to connect without a
   sign-in, so nobody without the password can hold connections open.
-- **Client address.** `Fly-Client-IP`, read with a public name only; anywhere
-  else anyone could send it. Without a usable one the connection's address is
-  used, which behind Fly is the proxy's, so all such requests share one key.
+- **Client address.** `Fly-Client-IP`, read only with a public name on a Fly
+  machine (Fly sets `FLY_APP_NAME` there); anywhere else, the image included
+  when run elsewhere, anyone could send it. Without a usable one the
+  connection's address is used, which behind Fly is the proxy's, so all such
+  requests share one key.
 - **Headers.** HSTS for a year, `X-Robots-Tag: noindex, nofollow` and the
   dashboard's existing CSP, `Referrer-Policy: no-referrer` and `Host` check.
   `/robots.txt` is answered under any `Host`, for Fly's health check.

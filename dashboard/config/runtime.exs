@@ -58,7 +58,8 @@ if config_env() != :test do
           push_tokens: System.get_env("GRM_RELAY_PUSH_TOKENS"),
           interval_seconds: String.to_integer(System.get_env("GRM_RELAY_INTERVAL_SECONDS", "5")),
           public_host: public_host,
-          viewer_password: System.get_env("GRM_RELAY_VIEWER_PASSWORD")
+          viewer_password: System.get_env("GRM_RELAY_VIEWER_PASSWORD"),
+          fly_app: System.get_env("FLY_APP_NAME")
 
         # The one place the dashboard listens beyond loopback: a relay with a
         # public name, behind Fly's proxy, which reaches the machine on its

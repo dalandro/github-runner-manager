@@ -29,7 +29,9 @@ defmodule DashboardWeb.PublicRelayTest do
     :ok
   end
 
-  defp public_relay(_context), do: relay(public_host: @public_host)
+  # Fly sets FLY_APP_NAME on its machines; Fly-Client-IP is read only with it.
+  defp public_relay(_context), do: relay(public_host: @public_host, fly_app: "relay-example")
+  defp public_relay_off_fly(_context), do: relay(public_host: @public_host)
   defp loopback_relay(_context), do: relay([])
 
   defp public(conn), do: Map.put(conn, :host, @public_host)
@@ -252,6 +254,23 @@ defmodule DashboardWeb.PublicRelayTest do
       refute log =~ @password
       refute log =~ Base.encode64("viewer:" <> @password)
       refute log =~ @token
+    end
+  end
+
+  describe "a public relay not on Fly" do
+    setup :public_relay_off_fly
+
+    test "ignores Fly-Client-IP: without Fly's proxy anyone could send it", %{conn: conn} do
+      for attempt <- 1..10 do
+        conn
+        |> public()
+        |> from("198.51.100.#{attempt}")
+        |> with_password("wrong-password")
+        |> get("/")
+      end
+
+      assert (conn |> public() |> from("198.51.100.99") |> with_password() |> get("/")).status ==
+               429
     end
   end
 
