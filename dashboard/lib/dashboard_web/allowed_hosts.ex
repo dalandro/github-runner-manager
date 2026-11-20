@@ -47,6 +47,14 @@ defmodule DashboardWeb.AllowedHosts do
     |> Enum.uniq()
   end
 
+  @doc "Whether a string is one plain host name, lower-case: no scheme, port, path or wildcard."
+  @spec host_name?(String.t()) :: boolean()
+  def host_name?(name), do: byte_size(name) <= 253 and Regex.match?(@host_name, name)
+
+  @doc "Whether a name is one of the loopback names."
+  @spec loopback?(String.t()) :: boolean()
+  def loopback?(name), do: name in @loopback
+
   @doc "Whether a `Host` header value (without its port) is an allowed name."
   @spec allowed?(String.t() | nil) :: boolean()
   def allowed?(host) when is_binary(host), do: String.downcase(host, :ascii) in list()
@@ -82,7 +90,7 @@ defmodule DashboardWeb.AllowedHosts do
   defp host_name!(name) do
     name = String.downcase(name, :ascii)
 
-    if byte_size(name) <= 253 and Regex.match?(@host_name, name) do
+    if host_name?(name) do
       name
     else
       raise ArgumentError,
