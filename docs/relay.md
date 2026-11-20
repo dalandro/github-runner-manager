@@ -36,8 +36,10 @@ and from Fly secrets (the other three).
   authentication over Fly's TLS); the user name is ignored. A right password
   is recorded in the signed session cookie (`Secure`, `HttpOnly`,
   `SameSite=Strict`, 12 hours), which the live socket checks again when it
-  connects. The cookie holds a keyed digest of the password, never the
-  password, so a new password or `SECRET_KEY_BASE` ends every session.
+  connects; an open board goes back to the prompt when its 12 hours are up.
+  The cookie holds a keyed digest of the password, never the password, so a
+  new password or `SECRET_KEY_BASE` ends every session (setting a Fly secret
+  restarts the machine, so open boards reconnect and are asked again).
 - **Push token.** Unchanged from relay mode: compared in constant time against
   every configured token, before the body is read; body capped at 128 KB.
 - **Comparisons** of passwords and tokens hash both sides and compare the

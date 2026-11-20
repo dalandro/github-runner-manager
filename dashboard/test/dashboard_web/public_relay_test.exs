@@ -6,7 +6,7 @@ defmodule DashboardWeb.PublicRelayTest do
   import ExUnit.CaptureLog
 
   alias Dashboard.Relay.{Inbox, Limiter}
-  alias DashboardWeb.ViewerAuth
+  alias DashboardWeb.{RelayLogin, ViewerAuth}
 
   @public_host "relay.example.dev"
   @password "viewer-password-for-tests"
@@ -64,6 +64,19 @@ defmodule DashboardWeb.PublicRelayTest do
       assert conn |> get("/") |> html_response(200) =~ "org/mobile-app"
       assert {:ok, view, _html} = live(conn, "/")
       assert has_element?(view, "#runner-mobile-app")
+    end
+
+    test "an open board closes when its sign-in runs out", %{conn: conn} do
+      almost_over =
+        RelayLogin.session(
+          @password,
+          DashboardWeb.Endpoint.config(:secret_key_base),
+          System.system_time(:second) - RelayLogin.max_age() + 1
+        )
+
+      {:ok, view, _html} = conn |> public() |> init_test_session(almost_over) |> live("/")
+
+      assert_redirect(view, "/", 3_000)
     end
 
     test "a new password ends every session, on the page and on the socket", %{conn: conn} do

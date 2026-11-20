@@ -6,7 +6,8 @@ defmodule DashboardWeb.ViewerAuth do
   session names a listed viewer recorded within `DashboardWeb.Viewers.max_age/0`.
   With a relay viewer password, only when it records a sign-in with the
   current password (`DashboardWeb.RelayLogin.session_valid?/4`, checked by
-  `DashboardWeb.Plugs.RelayLogin` on page requests).
+  `DashboardWeb.Plugs.RelayLogin` on page requests); an open page is sent
+  back to `/` when that sign-in runs out.
   Otherwise the page is sent back to `/`, where the plugs answer.
   """
 
@@ -16,11 +17,25 @@ defmodule DashboardWeb.ViewerAuth do
   alias DashboardWeb.{Endpoint, RelayLogin, Viewers}
 
   def on_mount(:require_viewer, _params, session, socket) do
-    if allowed?(session) do
-      {:cont, socket}
-    else
-      {:halt, redirect(socket, to: "/")}
+    cond do
+      not allowed?(session) -> {:halt, redirect(socket, to: "/")}
+      Relay.login_required?() -> {:cont, end_with_sign_in(socket, session)}
+      true -> {:cont, socket}
     end
+  end
+
+  # A page stays connected for as long as the board is open; the sign-in that
+  # let it mount does not.
+  defp end_with_sign_in(socket, %{"viewer_at" => at}) do
+    if connected?(socket) do
+      seconds_left = at + RelayLogin.max_age() - System.system_time(:second)
+      Process.send_after(self(), :relay_sign_in_over, max(seconds_left, 0) * 1_000)
+    end
+
+    attach_hook(socket, :relay_sign_in, :handle_info, fn
+      :relay_sign_in_over, socket -> {:halt, redirect(socket, to: "/")}
+      _message, socket -> {:cont, socket}
+    end)
   end
 
   @doc """
