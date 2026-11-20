@@ -25,7 +25,9 @@ defmodule Dashboard.Application do
   end
 
   defp inbox do
-    if Dashboard.Relay.enabled?(), do: [Dashboard.Relay.Inbox], else: []
+    if Dashboard.Relay.enabled?(),
+      do: [Dashboard.Relay.Inbox, Dashboard.Relay.Limiter],
+      else: []
   end
 
   defp poller do

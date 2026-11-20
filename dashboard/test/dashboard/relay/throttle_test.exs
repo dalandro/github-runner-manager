@@ -88,20 +88,20 @@ defmodule Dashboard.Relay.ThrottleTest do
     end
   end
 
-  describe "push/2" do
+  describe "accept_push/2" do
     test "takes one push per interval" do
       throttle = Throttle.new(push_interval_ms: 1_000)
 
-      assert {:ok, throttle} = Throttle.push(throttle, @start)
-      assert {:error, 1} = Throttle.push(throttle, @start + 999)
-      assert {:ok, _throttle} = Throttle.push(throttle, @start + 1_000)
+      assert {:ok, throttle} = Throttle.accept_push(throttle, @start)
+      assert {:error, 1} = Throttle.accept_push(throttle, @start + 999)
+      assert {:ok, _throttle} = Throttle.accept_push(throttle, @start + 1_000)
     end
 
     test "takes every push with no interval" do
       throttle = Throttle.new(push_interval_ms: 0)
 
-      assert {:ok, throttle} = Throttle.push(throttle, @start)
-      assert {:ok, _throttle} = Throttle.push(throttle, @start)
+      assert {:ok, throttle} = Throttle.accept_push(throttle, @start)
+      assert {:ok, _throttle} = Throttle.accept_push(throttle, @start)
     end
   end
 

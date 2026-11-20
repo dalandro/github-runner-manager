@@ -96,12 +96,12 @@ defmodule Dashboard.Relay.Throttle do
   end
 
   @doc "Takes a push at `now`, or refuses it with the seconds to wait."
-  @spec push(t(), integer()) :: {:ok, t()} | {:error, pos_integer()}
-  def push(%__MODULE__{last_push: last, push_interval_ms: interval}, now)
+  @spec accept_push(t(), integer()) :: {:ok, t()} | {:error, pos_integer()}
+  def accept_push(%__MODULE__{last_push: last, push_interval_ms: interval}, now)
       when is_integer(last) and now - last < interval,
       do: {:error, seconds(last + interval - now)}
 
-  def push(%__MODULE__{} = throttle, now), do: {:ok, %{throttle | last_push: now}}
+  def accept_push(%__MODULE__{} = throttle, now), do: {:ok, %{throttle | last_push: now}}
 
   @doc "The clients remembered, for tests: those with recent wrong attempts or a lock."
   @spec clients(t()) :: [key()]

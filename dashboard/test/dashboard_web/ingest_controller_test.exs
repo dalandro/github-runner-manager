@@ -3,14 +3,14 @@ defmodule DashboardWeb.IngestControllerTest do
   # inbox the controller writes to.
   use DashboardWeb.ConnCase, async: false
 
-  alias Dashboard.Relay.Inbox
+  alias Dashboard.Relay.{Inbox, Limiter}
   alias Dashboard.{Fixtures, Status}
   alias DashboardWeb.IngestController
 
   @token String.duplicate("t", 32)
   @old_token String.duplicate("o", 40)
 
-  defp relay_mode(_context) do
+  defp relay_mode(context) do
     Application.put_env(:dashboard, :relay,
       push_tokens: "#{@token},#{@old_token}",
       interval_seconds: 5
@@ -18,6 +18,8 @@ defmodule DashboardWeb.IngestControllerTest do
 
     on_exit(fn -> Application.delete_env(:dashboard, :relay) end)
     start_supervised!(Inbox)
+    # Most tests push several times in a row; the rate limit has its own.
+    start_supervised!({Limiter, push_interval_ms: context[:push_interval_ms] || 0})
     :ok
   end
 
@@ -116,6 +118,34 @@ defmodule DashboardWeb.IngestControllerTest do
       conn = conn |> put_req_header("accept", "text/html") |> push_document("not json")
 
       assert json_response(conn, 422)["error"]
+    end
+
+    @tag push_interval_ms: 1_000
+    test "takes one push a second", %{conn: conn} do
+      assert conn |> push_document(demo_document()) |> json_response(200)
+
+      conn = push_document(conn, demo_document())
+      assert json_response(conn, 429)["error"] =~ "one push a second"
+      assert get_resp_header(conn, "retry-after") == ["1"]
+    end
+
+    test "after ten wrong tokens refuses the client for ten minutes, right token or not",
+         %{conn: conn} do
+      for _attempt <- 1..10 do
+        assert conn |> push_document(demo_document(), @token <> "x") |> json_response(401)
+      end
+
+      conn = push_document(conn, demo_document())
+      assert json_response(conn, 429)["error"] =~ "too many wrong push tokens"
+      assert get_resp_header(conn, "retry-after") == ["600"]
+      assert Inbox.latest(Inbox) == nil
+    end
+
+    test "a right token takes back its attempt, so a busy host is never locked out",
+         %{conn: conn} do
+      for _attempt <- 1..20 do
+        assert conn |> push_document(demo_document()) |> json_response(200)
+      end
     end
 
     test "sets no cookie", %{conn: conn} do
