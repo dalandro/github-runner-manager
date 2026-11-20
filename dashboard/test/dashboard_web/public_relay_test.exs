@@ -226,6 +226,39 @@ defmodule DashboardWeb.PublicRelayTest do
       assert forged.status == 429
     end
 
+    test "a browser known under the old password gets no pass after a new one",
+         %{conn: conn} do
+      signed_in = conn |> public() |> from("198.51.100.7") |> with_password() |> get("/")
+      known = signed_in.resp_cookies["_grm_relay_known"]
+
+      relay_settings = Application.get_env(:dashboard, :relay)
+      new_password = @password <> "-new"
+
+      Application.put_env(
+        :dashboard,
+        :relay,
+        Keyword.put(relay_settings, :viewer_password, new_password)
+      )
+
+      for client <- 1..10, _attempt <- 1..10 do
+        build_conn()
+        |> public()
+        |> from("203.0.113.#{client}")
+        |> with_password("wrong-password")
+        |> get("/")
+      end
+
+      again =
+        build_conn()
+        |> public()
+        |> from("198.51.100.9")
+        |> put_req_cookie("_grm_relay_known", known.value)
+        |> with_password(new_password)
+        |> get("/")
+
+      assert again.status == 429
+    end
+
     test "wrong push tokens never stop a viewer signing in", %{conn: conn} do
       for client <- 1..10, _attempt <- 1..10 do
         conn
