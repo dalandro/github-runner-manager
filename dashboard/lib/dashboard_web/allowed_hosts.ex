@@ -5,7 +5,8 @@ defmodule DashboardWeb.AllowedHosts do
 
   The extra names exist for one setup: a proxy on this machine that puts the
   loopback port on a private network under its own name (see
-  `docs/remote-access.md`). The server still listens on 127.0.0.1 only; a
+  `docs/remote-access.md`). A public relay adds its own name
+  (`Dashboard.Relay.public_host/0`, see docs/relay.md). The server still listens on 127.0.0.1 only; a
   listed name widens which `Host` and `Origin` values are believed, nothing
   else. Names match exactly: no wildcards, no suffixes, no ports.
 
@@ -24,11 +25,18 @@ defmodule DashboardWeb.AllowedHosts do
 
   @doc "Every allowed name, loopback first. Raises on an invalid setting."
   @spec list() :: [String.t()]
-  def list, do: @loopback ++ parse!(Application.get_env(:dashboard, :allowed_hosts))
+  def list do
+    Enum.uniq(@loopback ++ public() ++ parse!(Application.get_env(:dashboard, :allowed_hosts)))
+  end
 
-  @doc "Whether the operator allowed any name beyond loopback."
+  @doc "Whether the operator allowed a name beyond loopback for a private-network proxy."
   @spec extra?() :: boolean()
-  def extra?, do: list() != @loopback
+  def extra?, do: parse!(Application.get_env(:dashboard, :allowed_hosts)) != []
+
+  # A public relay's own name (Dashboard.Relay), served behind Fly's HTTPS.
+  defp public do
+    if host = Dashboard.Relay.public_host(), do: [host], else: []
+  end
 
   @doc """
   The names in a comma-separated setting, lower-cased. Raises `ArgumentError`

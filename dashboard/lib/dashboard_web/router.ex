@@ -4,6 +4,7 @@ defmodule DashboardWeb.Router do
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
+    plug DashboardWeb.Plugs.RelayLogin
     plug DashboardWeb.Plugs.RequireViewer
     plug :put_root_layout, html: {DashboardWeb.Layouts, :root}
     plug :protect_from_forgery

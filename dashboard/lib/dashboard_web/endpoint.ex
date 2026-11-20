@@ -1,9 +1,15 @@
 defmodule DashboardWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :dashboard
 
+  # The page sends the socket nothing but joins and heartbeats; a public relay
+  # need not buffer more for anyone who opens one.
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: {__MODULE__, :session_options, []}]]
+    websocket: [
+      connect_info: [session: {__MODULE__, :session_options, []}],
+      max_frame_size: 65_536
+    ]
 
+  plug :public_headers
   plug DashboardWeb.Plugs.AllowedHost
 
   plug Plug.Static,
@@ -29,9 +35,9 @@ defmodule DashboardWeb.Endpoint do
 
   @doc """
   The session cookie: the CSRF token LiveView checks on connect and, with a
-  viewer list, the viewer and when the proxy last vouched for them. With a
-  viewer list it is then a credential, so it is `Secure` (sent over the
-  proxy's HTTPS only) and expires.
+  viewer list, the viewer and when the proxy last vouched for them (with a
+  relay viewer password, a sign-in). It is then a credential, so it is
+  `Secure` (sent over HTTPS only) and expires.
   """
   def session_options do
     base = [
@@ -41,10 +47,27 @@ defmodule DashboardWeb.Endpoint do
       same_site: "Strict"
     ]
 
-    if DashboardWeb.Viewers.required?() do
-      base ++ [secure: true, max_age: DashboardWeb.Viewers.max_age()]
+    cond do
+      Dashboard.Relay.login_required?() ->
+        base ++ [secure: true, max_age: DashboardWeb.RelayLogin.max_age()]
+
+      DashboardWeb.Viewers.required?() ->
+        base ++ [secure: true, max_age: DashboardWeb.Viewers.max_age()]
+
+      true ->
+        base
+    end
+  end
+
+  # On the internet only: browsers are told to use HTTPS from now on, and
+  # search engines to keep every response out of their index.
+  defp public_headers(conn, _options) do
+    if Dashboard.Relay.public?() do
+      conn
+      |> put_resp_header("strict-transport-security", "max-age=31536000")
+      |> put_resp_header("x-robots-tag", "noindex, nofollow")
     else
-      base
+      conn
     end
   end
 
