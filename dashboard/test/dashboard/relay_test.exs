@@ -124,6 +124,15 @@ defmodule Dashboard.RelayTest do
       assert_raise ArgumentError, ~r/GRM_DASHBOARD_VIEWERS/, &Relay.check_boot!/0
     end
 
+    test "a viewer password and a viewer list never mix, on loopback either" do
+      relay(viewer_password: String.duplicate("p", 24))
+      Application.put_env(:dashboard, :viewers, "viewer@example.com")
+
+      assert_raise ArgumentError,
+                   ~r/GRM_DASHBOARD_VIEWERS.*GRM_RELAY_VIEWER_PASSWORD/,
+                   &Relay.check_boot!/0
+    end
+
     test "a loopback relay needs no password, and takes one" do
       relay([])
       assert Relay.check_boot!() == :ok

@@ -46,18 +46,20 @@ defmodule Dashboard.Relay do
       viewer_password()
 
       cond do
-        not public?() ->
-          :ok
-
-        viewer_password() == nil ->
+        public?() and viewer_password() == nil ->
           raise ArgumentError,
                 "GRM_RELAY_PUBLIC_HOST needs GRM_RELAY_VIEWER_PASSWORD: a public relay " <>
                   "is never served without a password"
 
-        DashboardWeb.Viewers.required?() ->
+        public?() and DashboardWeb.Viewers.required?() ->
           raise ArgumentError,
                 "GRM_DASHBOARD_VIEWERS trusts a private-network proxy's identity header; " <>
                   "a public relay has no such proxy, so it takes GRM_RELAY_VIEWER_PASSWORD only"
+
+        login_required?() and DashboardWeb.Viewers.required?() ->
+          raise ArgumentError,
+                "GRM_DASHBOARD_VIEWERS and GRM_RELAY_VIEWER_PASSWORD are two ways to sign in; " <>
+                  "set one"
 
         true ->
           :ok

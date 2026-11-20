@@ -69,10 +69,13 @@ defmodule DashboardWeb.Plugs.RelayLogin do
     )
   end
 
+  # A fresh session on sign-in, so nothing set before it carries over.
   defp sign_in(conn, password) do
     conn.secret_key_base
     |> then(&RelayLogin.session(password, &1, System.system_time(:second)))
-    |> Enum.reduce(conn, fn {key, value}, conn -> put_session(conn, key, value) end)
+    |> Enum.reduce(configure_session(conn, renew: true), fn {key, value}, conn ->
+      put_session(conn, key, value)
+    end)
   end
 
   defp ask(conn) do
