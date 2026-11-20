@@ -3,7 +3,7 @@ defmodule DashboardWeb.Endpoint do
 
   # The page sends the socket nothing but joins and heartbeats; a public relay
   # need not buffer more for anyone who opens one.
-  socket "/live", Phoenix.LiveView.Socket,
+  socket "/live", DashboardWeb.LiveSocket,
     websocket: [
       connect_info: [session: {__MODULE__, :session_options, []}],
       max_frame_size: 65_536

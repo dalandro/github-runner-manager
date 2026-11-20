@@ -84,6 +84,18 @@ defmodule DashboardWeb.PublicRelayTest do
                ViewerAuth.on_mount(:require_viewer, %{}, session, %Phoenix.LiveView.Socket{})
     end
 
+    test "refuses a live socket without a sign-in, before it can join anything", %{conn: conn} do
+      for session <- [nil, %{}, %{"relay_viewer" => "forged", "viewer_at" => 0}] do
+        assert :error =
+                 DashboardWeb.LiveSocket.connect(%{}, %Phoenix.Socket{}, %{session: session})
+      end
+
+      session = conn |> public() |> with_password() |> get("/") |> get_session()
+
+      assert {:ok, %Phoenix.Socket{}} =
+               DashboardWeb.LiveSocket.connect(%{}, %Phoenix.Socket{}, %{session: session})
+    end
+
     test "the session cookie is a credential: Secure, HttpOnly, SameSite=Strict, 12 hours",
          %{conn: conn} do
       conn = conn |> public() |> with_password() |> get("/")

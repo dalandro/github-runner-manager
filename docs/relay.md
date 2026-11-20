@@ -56,7 +56,10 @@ and from Fly secrets (the other three).
     go stale. Only wrong tokens are counted, and on their own: they never
     fill the viewers' global cap.
   - One accepted push a second.
-  - Fly's proxy caps connections at 25 per machine (`fly.toml.example`).
+  - Fly's proxy caps the machine at 50 requests in flight
+    (`fly.toml.example`); an open board's live socket counts as one.
+- **Live socket.** With a viewer password it refuses to connect without a
+  sign-in, so nobody without the password can hold connections open.
 - **Client address.** `Fly-Client-IP`, read with a public name only; anywhere
   else anyone could send it. Without a usable one the connection's address is
   used, which behind Fly is the proxy's, so all such requests share one key.

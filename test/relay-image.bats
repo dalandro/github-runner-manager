@@ -98,6 +98,12 @@ setup() {
   grep -q 'org/mobile-app' "$BATS_TEST_TMPDIR/body"
   [[ $(header set-cookie) == *'; secure'*'; HttpOnly; SameSite=Strict' ]]
 
+  # Without a sign-in the live socket refuses to connect at all.
+  run request -i -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: https://$public_host" \
+    "$url/live/websocket?vsn=2.0.0"
+  [ "$output" = 403 ]
+
   # Under any other name nothing is served (DNS rebinding).
   request_host=other.example.dev run request -u "viewer:$password" "$url/"
   [ "$output" = 403 ]
