@@ -170,6 +170,8 @@ wait_until_ready() { # <server pid>
   run curl -fsS "http://127.0.0.1:$port/"
   [[ $output == *'repo-2'* && $output != *'mobile-app'* ]]
 
+  # The relay takes one push a second at most.
+  sleep 1
   GRM_RELAY_SHARE_DETAILS=1 run "$GRM_ROOT/bin/grm-relay-push" --once
   [ "$output" = 'grm-relay-push: pushed' ]
   wait_for page_has 'org/mobile-app'
