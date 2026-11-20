@@ -98,10 +98,21 @@ setup() {
   grep -q 'org/mobile-app' "$BATS_TEST_TMPDIR/body"
   [[ $(header set-cookie) == *'; secure'*'; HttpOnly; SameSite=Strict' ]]
 
-  # Without a sign-in the live socket refuses to connect at all.
-  run request -i -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+  # The live socket connects with that sign-in (its cookie is Secure, so it
+  # is sent by hand over this plain loopback port), and without it refuses
+  # to connect at all.
+  local cookie csrf
+  cookie=$(header set-cookie | sed -e 's/^[^:]*: //' -e 's/;.*//')
+  csrf=$(grep -o 'name="csrf-token" content="[^"]*"' "$BATS_TEST_TMPDIR/body" | sed 's/.*content="//; s/"$//')
+  [[ -n $cookie && -n $csrf ]]
+  run request --max-time 2 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: https://$public_host" -H "Cookie: $cookie" \
+    "$url/live/websocket?vsn=2.0.0&_csrf_token=$csrf"
+  # curl gives up on the open socket after 2 s; the status is the last line.
+  [ "${lines[-1]}" = 101 ]
+  run request -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
     -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H "Origin: https://$public_host" \
-    "$url/live/websocket?vsn=2.0.0"
+    "$url/live/websocket?vsn=2.0.0&_csrf_token=$csrf"
   [ "$output" = 403 ]
 
   # Under any other name nothing is served (DNS rebinding).
