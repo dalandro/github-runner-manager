@@ -1,9 +1,10 @@
-# Only what dashboard/Dockerfile copies: sources, config, priv, mix files.
-_build
-deps
-tmp
-cover
-test
-fly.toml
-*.ez
-erl_crash.dump
+# An allow-list: only what dashboard/Dockerfile copies reaches the build, so
+# a stray local file (an .env, a fly.toml, a build) never lands in the image.
+*
+!mix.exs
+!mix.lock
+!config/config.exs
+!config/prod.exs
+!config/runtime.exs
+!lib/
+!priv/
