@@ -63,4 +63,29 @@ defmodule DashboardWeb.RelayLoginTest do
       refute RelayLogin.session_valid?(%{"viewer_at" => 1_000}, @password, @secret, 1_000)
     end
   end
+
+  describe "known_browser?/4" do
+    setup do
+      %{known: RelayLogin.known_browser(@password, @secret, 1_000)}
+    end
+
+    test "holds for the password it was made with, for thirty days", %{known: known} do
+      assert RelayLogin.known_browser?(known, @password, @secret, 1_000 + 30 * 86_400)
+      refute RelayLogin.known_browser?(known, @password, @secret, 1_001 + 30 * 86_400)
+      refute RelayLogin.known_browser?(known, @password, @secret, 999)
+    end
+
+    test "ends when the password or the secret key base changes", %{known: known} do
+      refute RelayLogin.known_browser?(known, @password <> "-new", @secret, 1_000)
+      refute RelayLogin.known_browser?(known, @password, @secret <> "-new", 1_000)
+    end
+
+    test "holds neither the password nor anything without a key", %{known: known} do
+      refute inspect(known) =~ @password
+
+      for other <- [nil, %{}, "forged", %{"print" => "forged", "at" => 1_000}] do
+        refute RelayLogin.known_browser?(other, @password, @secret, 1_000)
+      end
+    end
+  end
 end

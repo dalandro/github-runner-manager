@@ -118,8 +118,9 @@ defmodule DashboardWeb.PublicRelayTest do
       assert %{secure: true, same_site: "Strict", max_age: 43_200} =
                conn.resp_cookies["_grm_dashboard"]
 
-      [cookie] = get_resp_header(conn, "set-cookie")
-      assert cookie =~ "; HttpOnly"
+      for cookie <- get_resp_header(conn, "set-cookie") do
+        assert cookie =~ "; HttpOnly"
+      end
     end
 
     test "locks a client out after ten wrong passwords, before comparing", %{conn: conn} do
@@ -183,6 +184,46 @@ defmodule DashboardWeb.PublicRelayTest do
              |> with_password()
              |> get("/")
              |> html_response(200)
+    end
+
+    test "a browser that signed in before gets past a global cap strangers filled",
+         %{conn: conn} do
+      signed_in = conn |> public() |> from("198.51.100.7") |> with_password() |> get("/")
+      known = signed_in.resp_cookies["_grm_relay_known"]
+      assert %{secure: true, http_only: true, same_site: "Strict", max_age: 2_592_000} = known
+
+      for client <- 1..10, _attempt <- 1..10 do
+        build_conn()
+        |> public()
+        |> from("203.0.113.#{client}")
+        |> with_password("wrong-password")
+        |> get("/")
+      end
+
+      stranger = build_conn() |> public() |> from("198.51.100.8") |> with_password() |> get("/")
+      assert stranger.status == 429
+
+      # Only the known-browser cookie, no session: the sign-in is over, and the
+      # phone is on another network now.
+      again =
+        build_conn()
+        |> public()
+        |> from("198.51.100.9")
+        |> put_req_cookie("_grm_relay_known", known.value)
+        |> with_password()
+        |> get("/")
+
+      assert html_response(again, 200) =~ "org/mobile-app"
+
+      forged =
+        build_conn()
+        |> public()
+        |> from("198.51.100.10")
+        |> put_req_cookie("_grm_relay_known", "forged")
+        |> with_password()
+        |> get("/")
+
+      assert forged.status == 429
     end
 
     test "wrong push tokens never stop a viewer signing in", %{conn: conn} do

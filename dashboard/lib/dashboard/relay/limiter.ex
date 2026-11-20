@@ -39,8 +39,8 @@ defmodule Dashboard.Relay.Limiter do
 
   @doc "Counts an attempt by a client, or refuses it with the seconds to wait (`Throttle.attempt/3`)."
   @spec attempt(Agent.agent(), Throttle.key()) :: :ok | {:error, pos_integer()}
-  def attempt(limiter, key) do
-    update(limiter, &Throttle.attempt(&1, key, now()))
+  def attempt(limiter, key, options \\ []) do
+    update(limiter, &Throttle.attempt(&1, key, now(), options))
   end
 
   @doc "Takes back a client's latest attempt: it was right (`Throttle.forgive/2`)."

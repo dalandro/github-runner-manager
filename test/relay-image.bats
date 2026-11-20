@@ -98,13 +98,14 @@ setup() {
     sleep 0.5
   done
   grep -q 'org/mobile-app' "$BATS_TEST_TMPDIR/body"
-  [[ $(header set-cookie) == *'; secure'*'; HttpOnly; SameSite=Strict' ]]
+  # The session, and the cookie that marks this browser as known.
+  [[ $(header set-cookie | grep -c '; secure.*; HttpOnly; SameSite=Strict$') -eq 2 ]]
 
   # The live socket connects with that sign-in (its cookie is Secure, so it
   # is sent by hand over this plain loopback port), and without it refuses
   # to connect at all.
   local cookie csrf
-  cookie=$(header set-cookie | sed -e 's/^[^:]*: //' -e 's/;.*//')
+  cookie=$(header set-cookie | grep '_grm_dashboard=' | sed -e 's/^[^:]*: //' -e 's/;.*//')
   csrf=$(grep -o 'name="csrf-token" content="[^"]*"' "$BATS_TEST_TMPDIR/body" | sed 's/.*content="//; s/"$//')
   [[ -n $cookie && -n $csrf ]]
   run request --max-time 2 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \

@@ -95,6 +95,24 @@ defmodule Dashboard.Relay.ThrottleTest do
                Throttle.attempt(throttle, "client-new", @start + 1 + 60 * @minute)
     end
 
+    test "lets a known client past the full global cap, but not past its own lock" do
+      throttle =
+        Enum.reduce(1..100, Throttle.new(), fn client, throttle ->
+          assert {:ok, throttle} = Throttle.attempt(throttle, "client-#{client}", @start + client)
+          throttle
+        end)
+
+      assert {:error, _seconds} = Throttle.attempt(throttle, "198.51.100.7", @start + 101)
+
+      assert {:ok, _throttle} =
+               Throttle.attempt(throttle, "198.51.100.7", @start + 101, known: true)
+
+      locked = fail(Throttle.new(), "198.51.100.7", 10)
+
+      assert {:error, _seconds} =
+               Throttle.attempt(locked, "198.51.100.7", @start + 11_000, known: true)
+    end
+
     test "keeps nothing about a client once its attempts are old" do
       throttle = fail(Throttle.new(), "198.51.100.7", 10)
 

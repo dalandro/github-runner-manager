@@ -7,7 +7,9 @@ defmodule DashboardWeb.Plugs.RelayLogin do
   counted against the client (`Dashboard.Relay.Limiter`), and a locked-out
   client gets 429 before anything is compared. A sign-in is recorded in the
   signed session, which `DashboardWeb.ViewerAuth` checks when the live socket
-  mounts.
+  mounts, and the browser is marked as known in a signed cookie of its own
+  (`DashboardWeb.RelayLogin.known_browser/3`), so its later sign-ins get past
+  a global cap that strangers filled.
 
   Without a password it does nothing.
   """
@@ -21,6 +23,7 @@ defmodule DashboardWeb.Plugs.RelayLogin do
   alias DashboardWeb.{Client, RelayLogin}
 
   @realm ~s(Basic realm="runner status", charset="UTF-8")
+  @known_cookie "_grm_relay_known"
 
   @impl true
   def init(options), do: options
@@ -43,7 +46,7 @@ defmodule DashboardWeb.Plugs.RelayLogin do
   defp attempt(conn, headers, password) do
     key = Client.key(conn)
 
-    with :ok <- Limiter.attempt(Limiter.viewers(), key),
+    with :ok <- Limiter.attempt(Limiter.viewers(), key, known: known_browser?(conn, password)),
          :ok <- RelayLogin.check(headers, password) do
       Limiter.forgive(Limiter.viewers(), key)
       sign_in(conn, password)
@@ -69,13 +72,32 @@ defmodule DashboardWeb.Plugs.RelayLogin do
     )
   end
 
+  defp known_browser?(conn, password) do
+    conn
+    |> fetch_cookies(signed: [@known_cookie])
+    |> Map.fetch!(:cookies)
+    |> Map.get(@known_cookie)
+    |> RelayLogin.known_browser?(password, conn.secret_key_base, System.system_time(:second))
+  end
+
   # A fresh session on sign-in, so nothing set before it carries over.
   defp sign_in(conn, password) do
+    now = System.system_time(:second)
+
     conn.secret_key_base
-    |> then(&RelayLogin.session(password, &1, System.system_time(:second)))
+    |> then(&RelayLogin.session(password, &1, now))
     |> Enum.reduce(configure_session(conn, renew: true), fn {key, value}, conn ->
       put_session(conn, key, value)
     end)
+    |> put_resp_cookie(
+      @known_cookie,
+      RelayLogin.known_browser(password, conn.secret_key_base, now),
+      sign: true,
+      max_age: RelayLogin.known_max_age(),
+      secure: true,
+      http_only: true,
+      same_site: "Strict"
+    )
   end
 
   defp ask(conn) do

@@ -11,7 +11,9 @@ defmodule Dashboard.Relay.Throttle do
     * Across clients: a hundred wrong attempts in an hour refuse every attempt
       until the oldest is an hour old. That caps guessing from many addresses,
       and bounds what is kept: a client is remembered only while one of its
-      wrong attempts or its lock is recent.
+      wrong attempts or its lock is recent. A known client (one that signed in
+      before) is not held back by this cap, so strangers filling it cannot
+      lock the owner out; its own lock still holds.
     * Pushes: one accepted push per interval (a second by default).
 
   A client is an IPv4 address or an IPv6 /64 network, which one machine
@@ -43,17 +45,19 @@ defmodule Dashboard.Relay.Throttle do
 
   @doc """
   Counts an attempt by `key` at `now`, or refuses it with the seconds to wait.
-  The attempt stays counted as wrong unless `forgive/2` follows.
+  The attempt stays counted as wrong unless `forgive/2` follows. Option:
+  `known: true` for a client that signed in before, which the global cap
+  does not refuse.
   """
-  @spec attempt(t(), key(), integer()) :: {:ok, t()} | {:error, pos_integer()}
-  def attempt(%__MODULE__{} = throttle, key, now) do
+  @spec attempt(t(), key(), integer(), keyword()) :: {:ok, t()} | {:error, pos_integer()}
+  def attempt(%__MODULE__{} = throttle, key, now, options \\ []) do
     throttle = prune(throttle, now)
 
     cond do
       until = throttle.locks[key] ->
         {:error, seconds(until - now)}
 
-      length(throttle.global) >= @global ->
+      length(throttle.global) >= @global and not Keyword.get(options, :known, false) ->
         {:error, seconds(List.last(throttle.global) + @global_window - now)}
 
       true ->

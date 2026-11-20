@@ -54,7 +54,10 @@ and from Fly secrets (the other three).
     not counted, so a browser resending the password is never locked out.
   - A hundred wrong attempts within an hour, from all clients together, refuse
     every new sign-in until the oldest of them is an hour old. A viewer
-    already signed in keeps the board.
+    already signed in keeps the board, and a browser that signed in within
+    the last 30 days (marked by a signed cookie of its own, tied to the
+    password) still gets its password checked, so strangers filling the cap
+    cannot lock the owner's phone out. Its own client's lock still holds.
   - A right push token is never refused for anyone's wrong guesses: a token
     of 32 or more random characters cannot be guessed, and the board must not
     go stale. Only wrong tokens are counted, and on their own: they never
