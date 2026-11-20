@@ -80,7 +80,7 @@ and from Fly secrets (the other three).
 Steps only the owner can do: they need a Fly account, cost money and create
 secrets. Run them from a checkout of this repository on any machine with
 [`flyctl`](https://fly.io/docs/flyctl/install/) and `openssl`, apart from steps
-8 to 10, which run on the runner host.
+8 to 10 and 12, which run on the runner host.
 
 1. Update the checkout and enter the dashboard directory:
 
@@ -166,6 +166,18 @@ secrets. Run them from a checkout of this repository on any machine with
 11. On the phone, open `https://<your-app-name>.fly.dev`, enter the viewer
     password (any user name) and add the page to the home screen.
 
+12. Check the stale banner, on the runner host with the board open on the
+    phone: stop the pusher, wait, and start it again.
+
+    ```bash
+    systemctl --user stop grm-relay-push
+    sleep 40   # the board turns to "Stale data" after 30 s without a push
+    systemctl --user start grm-relay-push
+    ```
+
+    The board shows "Stale data" and how old the last push is, then returns
+    to normal within a few seconds of the restart.
+
 ### Later
 
 Secrets always go in through `fly secrets import` on standard input; setting
@@ -220,6 +232,8 @@ None of this has run on Fly. In particular:
 - That a suspended machine resumes with its last push and its rate-limit
   counts; a stopped one starts empty, and the board waits for the next push.
 - Slow-request resistance rests on Fly's proxy and its request cap.
+- Whether the phone's password manager fills the browser's basic-auth
+  prompt; some only fill login forms, and then the password is typed in.
 - What one always-up machine costs: with pushes every 5 s it rarely suspends.
   A longer `GRM_RELAY_INTERVAL_SECONDS` (up to 300 on the host's side) makes
   the board staler without making the machine sleep: Fly suspends only after
