@@ -113,6 +113,45 @@ defmodule Dashboard.Relay.ThrottleTest do
                Throttle.attempt(locked, "198.51.100.7", @start + 11_000, known: true)
     end
 
+    test "caps known attempts past a full global cap too, so memory stays bounded" do
+      full =
+        Enum.reduce(1..100, Throttle.new(), fn client, throttle ->
+          assert {:ok, throttle} = Throttle.attempt(throttle, "client-#{client}", @start + client)
+          throttle
+        end)
+
+      known =
+        Enum.reduce(1..100, full, fn client, throttle ->
+          assert {:ok, throttle} =
+                   Throttle.attempt(throttle, "known-#{client}", @start + 200 + client,
+                     known: true
+                   )
+
+          throttle
+        end)
+
+      assert {:error, seconds} =
+               Throttle.attempt(known, "known-new", @start + 400, known: true)
+
+      assert seconds in 3599..3600
+      assert length(Throttle.clients(known)) == 200
+    end
+
+    test "a right password from a known client past the full cap costs nothing" do
+      full =
+        Enum.reduce(1..100, Throttle.new(), fn client, throttle ->
+          assert {:ok, throttle} = Throttle.attempt(throttle, "client-#{client}", @start + client)
+          throttle
+        end)
+
+      Enum.reduce(1..150, full, fn step, throttle ->
+        assert {:ok, throttle} =
+                 Throttle.attempt(throttle, "198.51.100.7", @start + 200 + step, known: true)
+
+        Throttle.forgive(throttle, "198.51.100.7")
+      end)
+    end
+
     test "keeps nothing about a client once its attempts are old" do
       throttle = fail(Throttle.new(), "198.51.100.7", 10)
 
