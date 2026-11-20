@@ -49,6 +49,23 @@ defmodule Dashboard.Relay.ThrottleTest do
       assert {:ok, _throttle} = Throttle.attempt(throttle, "198.51.100.7", @start + 31)
     end
 
+    test "a right tenth attempt takes back the lock it would have set" do
+      throttle = fail(Throttle.new(), "198.51.100.7", 9)
+      assert {:ok, throttle} = Throttle.attempt(throttle, "198.51.100.7", @start + 9_000)
+      throttle = Throttle.forgive(throttle, "198.51.100.7")
+
+      assert {:ok, _throttle} = Throttle.attempt(throttle, "198.51.100.7", @start + 10_000)
+    end
+
+    test "takes back the client's own attempt when another came in between" do
+      assert {:ok, throttle} = Throttle.attempt(Throttle.new(), "198.51.100.7", @start)
+      assert {:ok, throttle} = Throttle.attempt(throttle, "198.51.100.8", @start + 5)
+      throttle = Throttle.forgive(throttle, "198.51.100.7")
+
+      assert throttle.global == [@start + 5]
+      assert Throttle.clients(throttle) == ["198.51.100.8"]
+    end
+
     test "forgets wrong attempts older than ten minutes" do
       throttle = fail(Throttle.new(), "198.51.100.7", 9)
       throttle = fail(throttle, "198.51.100.7", 9, @start + 10 * @minute + 9_000)

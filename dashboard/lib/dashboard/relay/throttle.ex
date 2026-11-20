@@ -78,7 +78,7 @@ defmodule Dashboard.Relay.Throttle do
   @spec forgive(t(), key()) :: t()
   def forgive(%__MODULE__{} = throttle, key) do
     case Map.get(throttle.failures, key, []) do
-      [_latest | earlier] ->
+      [latest | earlier] ->
         %{
           throttle
           | failures: put_or_drop(throttle.failures, key, earlier),
@@ -87,7 +87,7 @@ defmodule Dashboard.Relay.Throttle do
                 do: Map.delete(throttle.locks, key),
                 else: throttle.locks
               ),
-            global: tl(throttle.global)
+            global: List.delete(throttle.global, latest)
         }
 
       [] ->
