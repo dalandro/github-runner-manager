@@ -227,3 +227,14 @@ SCRIPT
   [ "$status" -eq 2 ]
   [[ $output != *'mix '* ]]
 }
+
+@test "dashboard never serves a public relay from this host" {
+  setup_dashboard
+  local mode
+  for mode in --relay --demo ''; do
+    GRM_RELAY_PUBLIC_HOST=relay.example.dev GRM_RELAY_PUSH_TOKENS=example-push-token-of-32-characters \
+      run "$GRM_ROOT/bin/grm-dashboard" $mode
+    [ "$status" -eq 2 ]
+    [[ $output == *'GRM_RELAY_PUBLIC_HOST'*'docs/relay.md'* && $output != *'mix '* ]]
+  done
+}

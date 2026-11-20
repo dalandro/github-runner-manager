@@ -30,6 +30,11 @@ while (($#)); do
   esac
 done
 if ((demo && relay)); then usage_error 'grm-dashboard: --demo and --relay cannot be combined'; fi
+# A public relay is the container image's job (dashboard/Dockerfile), never
+# this host's: a dashboard here stays on loopback.
+if [[ -n ${GRM_RELAY_PUBLIC_HOST+set} ]]; then
+  usage_error 'grm-dashboard: GRM_RELAY_PUBLIC_HOST is for the hosted relay image only; unset it here (see docs/relay.md)'
+fi
 # The dashboard applies the full rule at boot and is the authority.
 push_tokens=${GRM_RELAY_PUSH_TOKENS:-}
 if ((relay)) && [[ -z ${push_tokens//[[:space:],]/} ]]; then
