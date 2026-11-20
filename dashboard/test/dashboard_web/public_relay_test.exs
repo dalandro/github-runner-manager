@@ -143,6 +143,17 @@ defmodule DashboardWeb.PublicRelayTest do
       assert html_response(other, 200) =~ "org/mobile-app"
     end
 
+    test "reads a Fly-Client-IP that is not UTF-8 as no address, without crashing",
+         %{conn: conn} do
+      for _attempt <- 1..10 do
+        conn |> public() |> from(<<0xFF, ?1>>) |> with_password("wrong-password") |> get("/")
+      end
+
+      # All ten were counted under the connection's own address.
+      conn = conn |> public() |> from("198.51.100.9\xFF") |> with_password() |> get("/")
+      assert conn.status == 429
+    end
+
     test "a right password costs nothing, however often the browser sends it", %{conn: conn} do
       for _request <- 1..20 do
         assert conn

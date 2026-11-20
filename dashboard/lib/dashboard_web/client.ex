@@ -20,6 +20,7 @@ defmodule DashboardWeb.Client do
   defp address(conn) do
     with true <- Relay.behind_fly?(),
          [value] <- Plug.Conn.get_req_header(conn, "fly-client-ip"),
+         true <- String.valid?(value),
          {:ok, address} <-
            value |> String.trim() |> String.to_charlist() |> :inet.parse_strict_address() do
       address
