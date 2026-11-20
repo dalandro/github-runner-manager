@@ -4,12 +4,14 @@ The hosted relay is the dashboard in [relay mode](dashboard.md#relay-mode)
 on the internet, so a phone can see the board without a private network. The
 runner host pushes its public status out ([`bin/grm-relay-push`](relay-push.md));
 the relay never reaches the host. `dashboard/Dockerfile` builds it and
-`dashboard/fly.toml.example` runs it on Fly.io: one small machine that sleeps
-when idle.
+`dashboard/fly.toml.example` runs it on Fly.io: one small machine. The host
+pushes every few seconds, so the machine stays up while the host does; it
+suspends only once pushes and visits stop (the host is off or offline) and
+wakes on the next request.
 
 ```mermaid
 flowchart LR
-  host["runner host<br/>grm-relay-push"] -- "HTTPS POST /ingest<br/>push token" --> fly["Fly proxy<br/>TLS, connection cap"]
+  host["runner host<br/>grm-relay-push"] -- "HTTPS POST /ingest<br/>push token" --> fly["Fly proxy<br/>TLS, request cap"]
   phone["phone"] -- "HTTPS, viewer password<br/>then signed cookie" --> fly
   fly --> relay["relay image<br/>0.0.0.0:8080, no host access"]
 ```
@@ -217,4 +219,8 @@ None of this has run on Fly. In particular:
   any), and whether the checks wake or keep awake a suspended machine.
 - That a suspended machine resumes with its last push and its rate-limit
   counts; a stopped one starts empty, and the board waits for the next push.
-- Slow-request resistance rests on Fly's proxy and the connection cap.
+- Slow-request resistance rests on Fly's proxy and its request cap.
+- What one always-up machine costs: with pushes every 5 s it rarely suspends.
+  A longer `GRM_RELAY_INTERVAL_SECONDS` (up to 300 on the host's side) makes
+  the board staler without making the machine sleep: Fly suspends only after
+  several idle minutes.

@@ -16,7 +16,8 @@ primary_region = "<region>"
 [http_service]
   internal_port = 8080
   force_https = true
-  # One small machine that sleeps when idle and wakes on the next request.
+  # One small machine. Pushes every few seconds keep it up; it suspends only
+  # once pushes and visits stop, and wakes on the next request.
   auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 0
