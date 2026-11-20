@@ -1,0 +1,9 @@
+# Only what dashboard/Dockerfile copies: sources, config, priv, mix files.
+_build
+deps
+tmp
+cover
+test
+fly.toml
+*.ez
+erl_crash.dump
