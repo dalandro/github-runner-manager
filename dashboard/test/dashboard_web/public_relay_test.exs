@@ -190,7 +190,7 @@ defmodule DashboardWeb.PublicRelayTest do
          %{conn: conn} do
       signed_in = conn |> public() |> from("198.51.100.7") |> with_password() |> get("/")
       known = signed_in.resp_cookies["_grm_relay_known"]
-      assert %{secure: true, http_only: true, same_site: "Strict", max_age: 2_592_000} = known
+      assert %{secure: true, http_only: true, same_site: "Lax", max_age: 2_592_000} = known
 
       for client <- 1..10, _attempt <- 1..10 do
         build_conn()

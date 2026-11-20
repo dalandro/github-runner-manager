@@ -80,7 +80,10 @@ defmodule DashboardWeb.Plugs.RelayLogin do
     |> RelayLogin.known_browser?(password, conn.secret_key_base, System.system_time(:second))
   end
 
-  # A fresh session on sign-in, so nothing set before it carries over.
+  # A fresh session on sign-in, so nothing set before it carries over. The
+  # known-browser cookie is Lax, not Strict like the session: it grants
+  # nothing without the password, and a board opened from a link elsewhere
+  # (a notification, a chat) comes without Strict cookies.
   defp sign_in(conn, password) do
     now = System.system_time(:second)
 
@@ -96,7 +99,7 @@ defmodule DashboardWeb.Plugs.RelayLogin do
       max_age: RelayLogin.known_max_age(),
       secure: true,
       http_only: true,
-      same_site: "Strict"
+      same_site: "Lax"
     )
   end
 

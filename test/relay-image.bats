@@ -99,7 +99,8 @@ setup() {
   done
   grep -q 'org/mobile-app' "$BATS_TEST_TMPDIR/body"
   # The session, and the cookie that marks this browser as known.
-  [[ $(header set-cookie | grep -c '; secure.*; HttpOnly; SameSite=Strict$') -eq 2 ]]
+  header set-cookie | grep '_grm_dashboard=' | grep -q '; secure.*; HttpOnly; SameSite=Strict$'
+  header set-cookie | grep '_grm_relay_known=' | grep -q '; secure.*; HttpOnly; SameSite=Lax$'
 
   # The live socket connects with that sign-in (its cookie is Secure, so it
   # is sent by hand over this plain loopback port), and without it refuses
