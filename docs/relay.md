@@ -108,8 +108,10 @@ secrets. Run them from a checkout of this repository on any machine with
    fly apps create "$app"
    ```
 
-5. Make the secrets and store them on Fly. Keep the password in a password
-   manager; the token goes to the runner host in step 8.
+5. Make the secrets and store them on Fly. They reach `fly` on its standard
+   input, never on a command line or in the shell history. The last line
+   shows the password and the token once: put both in a password manager
+   (the token goes to the runner host in step 8), then clear the terminal.
 
    ```bash
    token=$(openssl rand -hex 32)
@@ -117,6 +119,7 @@ secrets. Run them from a checkout of this repository on any machine with
    printf 'GRM_RELAY_PUSH_TOKENS=%s\nGRM_RELAY_VIEWER_PASSWORD=%s\nSECRET_KEY_BASE=%s\n' \
      "$token" "$password" "$(openssl rand -base64 48)" | fly secrets import
    printf 'viewer password: %s\npush token: %s\n' "$password" "$token"
+   clear
    ```
 
 6. Deploy one machine and check it:
@@ -137,10 +140,15 @@ secrets. Run them from a checkout of this repository on any machine with
    ```
 
 8. On the runner host, as the runners' account, in its checkout: store the
-   token from step 5 and point the pusher at the relay.
+   token from step 5 and point the pusher at the relay. The shell variables
+   from the steps above do not exist on this machine: `read` asks for the
+   token (paste it; it is not shown or kept in the history), and the app
+   name is typed in.
 
    ```bash
-   (umask 077; mkdir -p ~/.config/grm; printf '%s\n' '<push token>' > ~/.config/grm/relay-token)
+   read -rsp 'push token: ' token; echo
+   (umask 077; mkdir -p ~/.config/grm; printf '%s\n' "$token" > ~/.config/grm/relay-token)
+   unset token
    printf 'GRM_RELAY_URL=https://%s.fly.dev/ingest\n' '<your-app-name>' >> config.env
    ```
 
@@ -158,12 +166,31 @@ secrets. Run them from a checkout of this repository on any machine with
 
 ### Later
 
-- New viewer password (ends every session):
-  `fly secrets set GRM_RELAY_VIEWER_PASSWORD="$(openssl rand -base64 24)"`.
-- New push token without a gap: set both, update the host's token file, then
-  drop the old one:
-  `fly secrets set GRM_RELAY_PUSH_TOKENS="$new,$old"`, then
-  `fly secrets set GRM_RELAY_PUSH_TOKENS="$new"`.
+Secrets always go in through `fly secrets import` on standard input; setting
+one restarts the machine.
+
+- New viewer password (ends every session); save the one shown, then clear
+  the terminal:
+
+  ```bash
+  password=$(openssl rand -base64 24)
+  printf 'GRM_RELAY_VIEWER_PASSWORD=%s\n' "$password" | fly secrets import
+  printf 'viewer password: %s\n' "$password"; clear
+  ```
+
+- New push token without a gap: accept both, move the host to the new one
+  (step 8, then `bin/grm-relay-push --once`), then drop the old one:
+
+  ```bash
+  read -rsp 'current push token: ' old; echo
+  new=$(openssl rand -hex 32)
+  printf 'GRM_RELAY_PUSH_TOKENS=%s,%s\n' "$new" "$old" | fly secrets import
+  printf 'new push token: %s\n' "$new"
+  # ... step 8 on the runner host with the new token, then:
+  printf 'GRM_RELAY_PUSH_TOKENS=%s\n' "$new" | fly secrets import
+  clear
+  ```
+
 - Take it down: `fly apps destroy <your-app-name>`, then remove
   `GRM_RELAY_URL` from the host's `config.env` and stop the unit.
 
