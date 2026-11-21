@@ -120,12 +120,12 @@ log_event() {
 # locked for a second, so a stuck reader cannot stall one. The log is
 # rewritten in place under <name>.lock, never replaced.
 append_log_line() {
-  local name=$1 max=$2 line=$3 log=$GRM_STATE_DIR/$1.log lock_fd count kept
+  local name=$1 max=$2 line=$3 log=$GRM_STATE_DIR/$1.log log_lock_fd count kept
   if ! is_uint "$max" || ((max == 0)); then return 0; fi
   (
     mkdir -p "$GRM_STATE_DIR"
-    exec {lock_fd}<>"$GRM_STATE_DIR/$name.lock"
-    flock -w 1 "$lock_fd" || exit 0
+    exec {log_lock_fd}<>"$GRM_STATE_DIR/$name.lock"
+    flock -w 1 "$log_lock_fd" || exit 0
     # Never write through a symlink or into anything but a plain file.
     [[ ! -L $log && (! -e $log || -f $log) ]] || exit 0
     printf '%s %s\n' "$(date +%s)" "$line" >> "$log"
