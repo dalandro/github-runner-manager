@@ -183,3 +183,25 @@ arrived_ago() {
   # Cut back to the newest two once past twice that, like the event log.
   [ "$(awk '{printf "%d ", $2 / 100}' "$GRM_STATE_DIR/durations.log")" = '4 5 ' ]
 }
+
+@test "a duration log that cannot be written never fails the completion hook" {
+  start_holder
+  start_pull_request_job
+  mkdir -p "$GRM_STATE_DIR/durations.log"
+  "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  ! has_record holding "$holder"
+}
+
+@test "a held duration log lock drops the duration instead of holding up the release" {
+  start_holder
+  start_pull_request_job
+  : > "$GRM_STATE_DIR/durations.lock"
+  flock "$GRM_STATE_DIR/durations.lock" sleep 300 < /dev/null > /dev/null 2>&1 3>&- &
+  processes+=("$!")
+  wait_for test -n "$(find_lock_holders_for "$GRM_STATE_DIR/durations.lock")"
+  SECONDS=0
+  "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  ((SECONDS <= 3))
+  ! has_record holding "$holder"
+  [ ! -s "$GRM_STATE_DIR/durations.log" ]
+}
