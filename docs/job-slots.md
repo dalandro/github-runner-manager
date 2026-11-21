@@ -117,7 +117,9 @@ job becomes `_`, and the workflow is the rest of the line.
 
 The runner gives the completion hook no job result, so every run that reaches
 the hook is a sample: passed, failed or cancelled. A run whose runner was
-killed never reaches it and leaves none. Matrix jobs share their job id
+killed never reaches it and leaves none; a completion hook run by hand
+(`--holder`) on a job still running logs a short one, which the median
+mostly ignores. Matrix jobs share their job id
 (`GITHUB_JOB`), so their legs share one history.
 
 `grm-status --json` gives each job the seconds of the newest ten runs of the
