@@ -62,6 +62,32 @@ defmodule DashboardWeb.StatusLiveTest do
     end
   end
 
+  describe "a job whose time on the host is unknown" do
+    setup do
+      status =
+        Fixtures.status(fn document ->
+          update_in(document, ["slots", "records", Access.at(0)], fn record ->
+            record |> Map.put("since", nil) |> put_in(["job", "queued_at"], nil)
+          end)
+        end)
+
+      %{snapshot: start_poller(stub({:ok, status}))}
+    end
+
+    test "states the expected time once, with no progress", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#job-38 dd", "about 25 min")
+      refute has_element?(view, "#job-38 .estimate")
+
+      assert has_element?(
+               view,
+               "#runner-mobile-app .estimate-no_progress",
+               "usually about 25 min"
+             )
+    end
+  end
+
   describe "a normal reading" do
     setup do
       %{snapshot: start_poller(stub({:ok, Fixtures.status()}))}

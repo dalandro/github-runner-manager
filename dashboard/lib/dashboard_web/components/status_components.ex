@@ -671,7 +671,7 @@ defmodule DashboardWeb.StatusComponents do
             <%= if @estimate.expected do %>
               about {Estimate.about(@estimate.expected)}
               <span class="muted">· median of the last {@estimate.samples} runs</span>
-              <.estimate_bar estimate={@estimate} id={"#{@id}-estimate"} />
+              <.estimate_bar :if={@estimate.percent} estimate={@estimate} id={"#{@id}-estimate"} />
             <% else %>
               <span class="muted">{Estimate.words(@estimate)}</span>
             <% end %>
