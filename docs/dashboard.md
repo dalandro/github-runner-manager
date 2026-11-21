@@ -214,7 +214,7 @@ follow the system setting; the header button overrides it.
   how long it has been on the host against the median of the last ten runs of
   the same repository, job and workflow ([run durations](job-slots.md#run-durations)),
   the way Rundeck shows a running job against its average: a bar that fills,
-  "about N min left", then an amber "N min over expected" once it passes the
+  "about N min left", then amber "over expected" once it passes the
   median. With fewer than three runs logged it says "no estimate yet". The
   median rather than the mean, because the runner does not tell the hook
   whether a run passed: one run that failed early or hung moves a median
