@@ -416,7 +416,7 @@ print("\n".join(leaked + [f"no value to test in {name}" for name in untested]))
     "[[102, 103, 104, 105, 106, 107, 108, 109, 110, 111], []]" ]
 }
 
-@test "json status gives no durations, without waiting, while the duration log stays locked" {
+@test "json status gives no durations, after at most a second, while the duration log stays locked" {
   export GRM_SYSTEMCTL=true
   start_holder
   GRM_JOB_UNITS=1 GITHUB_REPOSITORY=org/repo-a GITHUB_WORKFLOW=CI GITHUB_JOB=test \
