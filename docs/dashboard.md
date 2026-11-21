@@ -204,12 +204,21 @@ follow the system setting; the header button overrides it.
   tap outside closes it. It shows the repository, workflow and job, the run, the
   pull request with its title when the run belongs to one, the branch, the
   short commit, event, actor, runner, units, what the job waits on and its place
-  in the queue, when it reached the host, when it last got its units and how long it
-  has been on the host. Run, pull request and commit link to the job's GitHub
+  in the queue, when it reached the host, when it last got its units, how long it
+  has been on the host and what it is expected to take. Run, pull request and commit link to the job's GitHub
   server (`GITHUB_SERVER_URL`). All of it comes from the
   [job record](job-slots.md#job-records) the start hook writes, through
   `grm-status --json`; the page fetches nothing. A job admitted before the
   hooks recorded jobs, or a field the record lacks, reads "unknown".
+- **Expected run time**: each job on a runner row, and its detail view, shows
+  how long it has been on the host against the median of the last ten runs of
+  the same repository, job and workflow ([run durations](job-slots.md#run-durations)),
+  the way Rundeck shows a running job against its average: a bar that fills,
+  "about N min left", then an amber "N min over expected" once it passes the
+  median. With fewer than three runs logged it says "no estimate yet". The
+  median rather than the mean, because the runner does not tell the hook
+  whether a run passed: one run that failed early or hung moves a median
+  little. The relay view shows it too; durations are numbers only.
 - **Device lock**: *Held* by a live wrapper; *Unclaimed* when its wrapper is
   gone; *Stale* when the watchdog reports a holder. The page never stops jobs.
 - **Host**: "Heavy steps may start" when the gate is open; "Heavy steps are

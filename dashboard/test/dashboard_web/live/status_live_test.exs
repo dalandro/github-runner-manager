@@ -24,6 +24,44 @@ defmodule DashboardWeb.StatusLiveTest do
     Phoenix.PubSub.broadcast(Dashboard.PubSub, Poller.topic(), {:snapshot, snapshot})
   end
 
+  describe "a reading taken now" do
+    # The demo replayed to the clock: each job is on the host for its recorded
+    # time plus less than ten minutes, so every estimate keeps its state.
+    setup do
+      status = Dashboard.Source.Demo.replay(Fixtures.status(), System.system_time(:second))
+      %{snapshot: start_poller(stub({:ok, status}))}
+    end
+
+    test "each running job shows progress against its usual duration", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#runner-mobile-app .estimate-on_track", "min left")
+      assert has_element?(view, "#runner-mobile-app svg.estimate-track rect.estimate-fill")
+      assert has_element?(view, "#runner-web-app .estimate-over", "over expected")
+
+      assert has_element?(
+               view,
+               ~s(#runner-web-app svg.estimate-track rect.estimate-fill[width="100%"])
+             )
+
+      assert has_element?(view, "#runner-data-pipeline .estimate-no_estimate", "2 of 3 runs")
+      refute has_element?(view, "#runner-data-pipeline svg.estimate-track")
+    end
+
+    test "a job's view states what it is expected to take and from how many runs", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      assert has_element?(view, "#job-38 dd", "about 25 min")
+      assert has_element?(view, "#job-38 dd", "median of the last 10 runs")
+      assert has_element?(view, "#job-38 .estimate-on_track", "min left")
+      assert has_element?(view, "#job-41 .estimate-over", "over expected")
+      assert has_element?(view, "#job-42 dd", "no estimate yet: 2 of 3 runs")
+      assert has_element?(view, "#job-43 dd", "no estimate yet")
+    end
+  end
+
   describe "a normal reading" do
     setup do
       %{snapshot: start_poller(stub({:ok, Fixtures.status()}))}

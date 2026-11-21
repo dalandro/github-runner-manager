@@ -10,7 +10,7 @@ defmodule DashboardWeb.StatusComponents do
 
   use Phoenix.Component
 
-  alias Dashboard.{JobDetails, Overview, Snapshot, Source}
+  alias Dashboard.{Estimate, JobDetails, Overview, Snapshot, Source}
   alias Dashboard.Status
   alias Dashboard.Status.{DeviceLock, Host, SlotRecord, Slots}
 
@@ -329,6 +329,11 @@ defmodule DashboardWeb.StatusComponents do
                 has the device
               </span>
             </p>
+            <.estimate_bar
+              :if={row.record}
+              estimate={estimate(row.record, @now)}
+              id={"runner-#{row.runner.name}-estimate"}
+            />
           </div>
         </li>
       </ul>
@@ -547,6 +552,7 @@ defmodule DashboardWeb.StatusComponents do
       |> assign(:id, "job-#{record.ticket}")
       |> assign(:details, JobDetails.describe(record))
       |> assign(:times, JobDetails.times(record, assigns.now))
+      |> assign(:estimate, estimate(record, assigns.now))
       |> assign(:activity, Overview.job_activity(record))
       |> assign(:position, Overview.queue_position(assigns.status.slots, record))
       |> assign(:runner, Overview.runner_for(assigns.status, record))
@@ -659,6 +665,18 @@ defmodule DashboardWeb.StatusComponents do
           <dt>On the host for</dt>
           <dd>{known(@times.elapsed && Overview.format_duration(@times.elapsed))}</dd>
         </div>
+        <div>
+          <dt>Expected</dt>
+          <dd>
+            <%= if @estimate.expected do %>
+              about {Estimate.about(@estimate.expected)}
+              <span class="muted">· median of the last {@estimate.samples} runs</span>
+              <.estimate_bar estimate={@estimate} id={"#{@id}-estimate"} />
+            <% else %>
+              <span class="muted">{Estimate.words(@estimate)}</span>
+            <% end %>
+          </dd>
+        </div>
       </dl>
       <p class="muted drawer-note">
         From the job's own hook record and the slot gate. Links open GitHub; this view changes
@@ -667,6 +685,30 @@ defmodule DashboardWeb.StatusComponents do
     </section>
     """
   end
+
+  attr :estimate, :map, required: true
+  attr :id, :string, required: true
+
+  # Elapsed against the job's usual duration, the way Rundeck shows a running
+  # job against its average: a bar that fills, then the words. Drawn as SVG
+  # for the same reason as the host meters.
+  defp estimate_bar(assigns) do
+    ~H"""
+    <div class={["estimate", "estimate-#{@estimate.state}"]} id={@id}>
+      <svg :if={@estimate.percent} class="estimate-track" aria-hidden="true" focusable="false">
+        <rect class="meter-rail" width="100%" height="100%" rx="3" />
+        <rect class="estimate-fill" width={"#{min(@estimate.percent, 100)}%"} height="100%" rx="3" />
+      </svg>
+      <p class={@estimate.state != :over && "muted"}>
+        <.icon :if={@estimate.state == :over} name={:attention} /> {Estimate.words(@estimate)}
+      </p>
+    </div>
+    """
+  end
+
+  # How long the job has been on the host against its recent runs.
+  defp estimate(%SlotRecord{} = record, now),
+    do: Estimate.estimate(record.job.recent_durations, JobDetails.times(record, now).elapsed)
 
   attr :href, :string, default: nil
   slot :inner_block, required: true
