@@ -66,8 +66,21 @@ defmodule Dashboard.StatusTest do
                status.slots.records
     end
 
-    test "rejects recent durations that are not at most ten whole seconds counts" do
-      for durations <- [600, [600, -1], [600, 1.5], ["600"], List.duplicate(600, 11)] do
+    test "accepts more recent durations than the producer sends; the estimate takes ten" do
+      status =
+        Fixtures.status(
+          &put_in(
+            &1,
+            ["slots", "records", Access.at(0), "job", "recent_durations"],
+            List.duplicate(600, 11)
+          )
+        )
+
+      assert length(hd(status.slots.records).job.recent_durations) == 11
+    end
+
+    test "rejects recent durations that are not a bounded list of whole seconds" do
+      for durations <- [600, [600, -1], [600, 1.5], ["600"], List.duplicate(600, 101)] do
         assert {:error, {:invalid_field, "recent_durations"}} =
                  Fixtures.document()
                  |> put_in(

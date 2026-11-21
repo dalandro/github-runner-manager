@@ -411,13 +411,15 @@ defmodule Dashboard.Status do
 
   defp optional_number!(map, key), do: fetch!(map, key, &(is_nil(&1) or reading?(&1)))
 
-  # A missing or null list is none known; the producer sends at most ten.
+  # A missing or null list is none known. The producer sends at most ten; a
+  # longer list is still a list (the estimate takes the newest ten), and the
+  # cap only bounds what a document from elsewhere can make the page hold.
   defp durations!(map, key) do
     fetch!(map, key, fn
       nil ->
         true
 
-      durations when is_list(durations) and length(durations) <= 10 ->
+      durations when is_list(durations) and length(durations) <= 100 ->
         Enum.all?(durations, &non_negative_integer?/1)
 
       _other ->
