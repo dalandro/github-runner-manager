@@ -198,6 +198,8 @@ CONFIG
   bash -c 'exec 17>"$1"; flock 17; sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$2"' _ "$GRM_DEVICE_LOCK" "$BATS_TEST_TMPDIR/leaked"
   processes+=("$(<"$BATS_TEST_TMPDIR/leaked")")
   printf '%s lock-acquire org/mobile-app job e2e-android\n' "$(date +%s)" >> "$GRM_STATE_DIR/events.log"
+  printf '1767260000 %s org/mobile-app e2e-android Android\n' 1380 1512 1446 > "$GRM_STATE_DIR/durations.log"
+  : > "$GRM_STATE_DIR/durations.lock"
   export GRM_WORKER_COMM=Fake.Worker
   mkdir -p "$GRM_RUNNERS_DIR/mobile-app/bin"
   cp "$(command -v bash)" "$GRM_RUNNERS_DIR/mobile-app/bin/Fake.Worker"
@@ -242,7 +244,8 @@ field_paths() {
     "[('runner-1', 'repo-1', '', 'runner-1.service'), ('runner-2', 'repo-2', '', 'runner-2.service')]" ]
   [ "$(json '[w["directory"] for w in document["workers"]]')" = "['runner-1']" ]
   [ "$(json 'document["slots"]["records"][0]["label"], document["device_lock"]["holder"]["repository"]')" = "('repo-1', 'repo-1')" ]
-  [ "$(json 'sorted({k: v for k, v in document["slots"]["records"][0]["job"].items() if v is not None})')" = "['queued_at', 'repository', 'runner']" ]
+  [ "$(json 'sorted({k: v for k, v in document["slots"]["records"][0]["job"].items() if v is not None})')" = "['queued_at', 'recent_durations', 'repository', 'runner']" ]
+  [ "$(json 'document["slots"]["records"][0]["job"]["recent_durations"]')" = '[1380, 1512, 1446]' ]
   [ "$(json '[document["device_lock"]["holder"][k] for k in ("run_id", "job")]')" = "['', '']" ]
   [ "$(json '[e["detail"] for e in document["events"] if e["kind"] == "lock-acquire"]')" = "['']" ]
   [ "$(json '[e["detail"] for e in document["events"] if e["kind"] == "admit"][0].startswith("ticket ")')" = True ]
@@ -384,5 +387,46 @@ print("\n".join(leaked + [f"no value to test in {name}" for name in untested]))
   [ "$status" -eq 0 ]
   [ "$(json '[document["slots"]["records"][0]["job"][key] for key in ("run_attempt", "run_id")]')" = "[None, '1001']" ]
   [ "$(json 'sorted(document["slots"]["records"][1]["job"])')" = \
-    "['actor', 'event', 'head_ref', 'job', 'pull_request', 'pull_request_title', 'queued_at', 'ref', 'repository', 'run_attempt', 'run_id', 'runner', 'server_url', 'sha', 'workflow']" ]
+    "['actor', 'event', 'head_ref', 'job', 'pull_request', 'pull_request_title', 'queued_at', 'recent_durations', 'ref', 'repository', 'run_attempt', 'run_id', 'runner', 'server_url', 'sha', 'workflow']" ]
+}
+
+@test "json status gives each job the durations of the last ten runs of the same repository, job and workflow" {
+  export GRM_SYSTEMCTL=true
+  start_holder; hooked=$holder
+  GRM_JOB_UNITS=1 GITHUB_REPOSITORY=org/repo-a GITHUB_WORKFLOW='CI checks' GITHUB_JOB=test \
+    "$GRM_ROOT/hooks/job-started.sh" --holder "$hooked"
+  start_holder; bare=$holder
+  "$GRM_ROOT/bin/job-slots" acquire --holder "$bare" --units 1 --label org/repo-b
+  mkdir -p "$GRM_STATE_DIR"
+  {
+    for seconds in 100 101 102 103 104 105 106 107 108 109 110 111; do
+      printf '1767260000 %s org/repo-a test CI checks\n' "$seconds"
+      printf '1767260000 9%s org/repo-b test CI checks\n' "$seconds"
+      printf '1767260000 9%s org/repo-a lint CI checks\n' "$seconds"
+      printf '1767260000 9%s org/repo-a test CI\n' "$seconds"
+    done
+    printf '1767260000 1.5 org/repo-a test CI checks\n'
+    printf '1767260000 -3 org/repo-a test CI checks\n'
+    printf 'not a line\n'
+  } > "$GRM_STATE_DIR/durations.log"
+  : > "$GRM_STATE_DIR/durations.lock"
+  run "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 0 ]
+  [ "$(json '[r["job"]["recent_durations"] for r in document["slots"]["records"]]')" = \
+    "[[102, 103, 104, 105, 106, 107, 108, 109, 110, 111], []]" ]
+}
+
+@test "json status gives no durations, without waiting, while the duration log stays locked" {
+  export GRM_SYSTEMCTL=true
+  start_holder
+  GRM_JOB_UNITS=1 GITHUB_REPOSITORY=org/repo-a GITHUB_WORKFLOW=CI GITHUB_JOB=test \
+    "$GRM_ROOT/hooks/job-started.sh" --holder "$holder"
+  printf '1767260000 100 org/repo-a test CI\n' > "$GRM_STATE_DIR/durations.log"
+  : > "$GRM_STATE_DIR/durations.lock"
+  flock "$GRM_STATE_DIR/durations.lock" sleep 300 < /dev/null > /dev/null 2>&1 3>&- &
+  processes+=("$!")
+  wait_for test -n "$(find_lock_holders_for "$GRM_STATE_DIR/durations.lock")"
+  run timeout 10 "$GRM_ROOT/bin/grm-status" --json
+  [ "$status" -eq 0 ]
+  [ "$(json 'document["slots"]["records"][0]["job"]["recent_durations"]')" = '[]' ]
 }
