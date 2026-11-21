@@ -97,3 +97,33 @@ reads them; job records are diagnostic metadata, not proof of identity.
 Records appear for jobs that start after the hooks are updated; jobs admitted
 earlier, and holders outside the hooks (`job-slots acquire` by hand), have none
 and show as unknown.
+
+## Run durations
+
+Before deleting a job's record, the completion hook appends how long the job
+was on the host to `$GRM_STATE_DIR/durations.log`, so the status views can say
+what a running job is expected to take:
+
+```text
+epoch seconds repository job workflow...
+1767269410 1462 org/repo-a test CI checks
+```
+
+`seconds` runs from the start hook (`queued_at`) to the completion hook, so it
+includes any wait for slot units or the device, the same span the dashboard
+counts as "on the host". Only a whole record of the completing process counts
+(repository, job, workflow and `queued_at`); whitespace in the repository and
+job becomes `_`, and the workflow is the rest of the line.
+
+The runner gives the completion hook no job result, so every run that reaches
+the hook is a sample: passed, failed or cancelled. A run whose runner was
+killed never reaches it and leaves none. Matrix jobs share their job id
+(`GITHUB_JOB`), so their legs share one history.
+
+`grm-status --json` gives each job the seconds of the newest ten runs of the
+same repository, job and workflow
+([`recent_durations`](status-json.md#schema-version-1)); the dashboard turns them
+into an estimate. The log is written like the [event log](events.md): best
+effort under `durations.lock`, never failing a hook, waiting at most one second
+for the lock, and cut back in place to the newest `GRM_DURATIONS_MAX` lines
+(default 1000) once it passes twice that. `GRM_DURATIONS_MAX=0` turns it off.

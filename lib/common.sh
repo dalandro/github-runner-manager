@@ -37,7 +37,8 @@ load_config() {
   : "${GRM_WATCHDOG_KILL_ALLOW:=}" "${GRM_UNIT_PREFIX:=grm-runner-}"
   : "${GRM_SYSTEMD_USER_DIR:=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
   : "${GRM_SYSTEMCTL:=systemctl --user}" "${GRM_PROC:=/proc}"
-  : "${GRM_EVENTS_MAX:=500}" "${GRM_UMASK:=077}" "${GRM_LOCK_WAIT:=30}"
+  : "${GRM_EVENTS_MAX:=500}" "${GRM_DURATIONS_MAX:=1000}"
+  : "${GRM_UMASK:=077}" "${GRM_LOCK_WAIT:=30}"
   : "${GRM_RELAY_URL:=}" "${GRM_RELAY_SHARE_DETAILS:=0}"
   : "${GRM_RELAY_TOKEN_FILE:=${XDG_CONFIG_HOME:-$HOME/.config}/grm/relay-token}"
 }
@@ -214,6 +215,30 @@ reap_job_records() {
     { read -r key start < "$file"; } 2>/dev/null || true
     if [[ $key != start ]] || ! is_alive "${file##*/}" "$start"; then rm -f "$file"; fi
   done
+}
+
+# Appends "epoch seconds repository job workflow" to the duration log, the
+# status views' estimates (docs/job-slots.md#run-durations): how long the job
+# whose record this is has been on the host, from its start hook to now. Only
+# a whole record of this very process counts; nothing else is logged.
+record_duration() {
+  local holder=$1 file=$GRM_STATE_DIR/jobs/$1 start line key value now
+  local -a lines=()
+  local -A fields=()
+  is_uint "$holder" && [[ ! -L $GRM_STATE_DIR/jobs && -f $file && ! -L $file ]] || return 0
+  start=$(get_start_time "$holder")
+  mapfile -t -n 32 lines < <(head -c 16384 "$file" 2>/dev/null) || return 0
+  [[ -n $start && ${lines[0]:-} == "start $start" ]] || return 0
+  for line in "${lines[@]:1}"; do
+    read -r key value <<< "$line" || true
+    case $key in queued_at|repository|workflow|job) fields[$key]=$value;; esac
+  done
+  now=$(date +%s)
+  # An epoch is too long for is_uint; twelve digits last for millennia.
+  [[ ${fields[queued_at]:-} =~ ^[1-9][0-9]{0,11}$ ]] && ((fields[queued_at] <= now)) || return 0
+  [[ -n ${fields[repository]:-} && -n ${fields[job]:-} && -n ${fields[workflow]:-} ]] || return 0
+  append_log_line durations "$GRM_DURATIONS_MAX" \
+    "$((now - fields[queued_at])) ${fields[repository]//[[:space:]]/_} ${fields[job]//[[:space:]]/_} ${fields[workflow]}"
 }
 
 remove_job_record() {
