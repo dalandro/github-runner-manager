@@ -32,7 +32,7 @@ declare -grA PUBLIC_FIELDS=(
   [slots.records.job.event]=share [slots.records.job.actor]=never
   [slots.records.job.runner]=alias [slots.records.job.server_url]=share
   [slots.records.job.pull_request]=share [slots.records.job.pull_request_title]=share
-  [slots.records.job.queued_at]=keep
+  [slots.records.job.queued_at]=keep [slots.records.job.recent_durations]=keep
   [device_lock.state]=keep
   [device_lock.holder.repository]=alias [device_lock.holder.run_id]=share
   [device_lock.holder.job]=share [device_lock.holder.pid]=keep

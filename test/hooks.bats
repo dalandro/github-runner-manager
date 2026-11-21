@@ -143,3 +143,65 @@ RECORD
   [ ! -e "$GRM_STATE_DIR/jobs/.record.old" ]
   [ -e "$GRM_STATE_DIR/jobs/.record.new" ]
 }
+
+# Moves the job's arrival on the host back by $1 seconds.
+arrived_ago() {
+  sed -i "s/^queued_at .*/queued_at $(($(date +%s) - $1))/" "$GRM_STATE_DIR/jobs/$holder"
+}
+
+@test "the completion hook keeps how long the job was on the host, for estimates" {
+  start_holder
+  start_pull_request_job
+  arrived_ago 125
+  "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  run cat "$GRM_STATE_DIR/durations.log"
+  [[ $output =~ ^[0-9]+\ 12[5-9]\ org/repo-a\ test\ CI\ checks$ ]]
+}
+
+@test "no duration is kept without a whole record, for a reused pid, or with GRM_DURATIONS_MAX=0" {
+  start_holder
+  GRM_JOB_UNITS=1 GITHUB_REPOSITORY=org/repo-a GITHUB_JOB=test "$GRM_ROOT/hooks/job-started.sh" --holder "$holder"
+  "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  start_holder
+  start_pull_request_job
+  sed -i '1s/.*/start 1/' "$GRM_STATE_DIR/jobs/$holder"
+  "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  start_holder
+  start_pull_request_job
+  GRM_DURATIONS_MAX=0 "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  [ ! -s "$GRM_STATE_DIR/durations.log" ]
+  ! has_record holding "$holder"
+}
+
+@test "the duration log is bounded and keeps the newest entries" {
+  for seconds in 100 200 300 400 500; do
+    start_holder
+    start_pull_request_job
+    arrived_ago "$seconds"
+    GRM_DURATIONS_MAX=2 "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  done
+  # Cut back to the newest two once past twice that, like the event log.
+  [ "$(awk '{printf "%d ", $2 / 100}' "$GRM_STATE_DIR/durations.log")" = '4 5 ' ]
+}
+
+@test "a duration log that cannot be written never fails the completion hook" {
+  start_holder
+  start_pull_request_job
+  mkdir -p "$GRM_STATE_DIR/durations.log"
+  "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  ! has_record holding "$holder"
+}
+
+@test "a held duration log lock drops the duration instead of holding up the release" {
+  start_holder
+  start_pull_request_job
+  : > "$GRM_STATE_DIR/durations.lock"
+  flock "$GRM_STATE_DIR/durations.lock" sleep 300 < /dev/null > /dev/null 2>&1 3>&- &
+  processes+=("$!")
+  wait_for test -n "$(find_lock_holders_for "$GRM_STATE_DIR/durations.lock")"
+  SECONDS=0
+  "$GRM_ROOT/hooks/job-completed.sh" --holder "$holder"
+  ((SECONDS <= 3))
+  ! has_record holding "$holder"
+  [ ! -s "$GRM_STATE_DIR/durations.log" ]
+}

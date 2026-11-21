@@ -139,7 +139,7 @@ json_optional_string() {
 # JSON object. A field the record lacks is null; so is every field when there
 # is no record, or the record belongs to an earlier process with the same pid.
 render_job() {
-  local process=$1 start=$2 directory=$GRM_STATE_DIR/jobs line key value
+  local process=$1 start=$2 directory=$GRM_STATE_DIR/jobs line key value recent_durations
   local -a lines=()
   local -A fields=()
   # Read once (32 lines, 16 KiB), so the start check and the fields come from
@@ -156,6 +156,8 @@ render_job() {
       esac
     done
   fi
+  recent_durations=$(render_recent_durations "${fields[repository]:-}" "${fields[job]:-}" "${fields[workflow]:-}")
+  public_field recent_durations slots.records.job.recent_durations
   for key in repository workflow job run_id run_attempt ref head_ref sha event actor runner server_url pull_request pull_request_title queued_at; do
     value=${fields[$key]:-}
     case $key in
@@ -165,7 +167,7 @@ render_job() {
     esac
     fields[$key]=$value
   done
-  printf '{"repository": %s, "workflow": %s, "job": %s, "run_id": %s, "run_attempt": %s, "ref": %s, "head_ref": %s, "sha": %s, "event": %s, "actor": %s, "runner": %s, "server_url": %s, "pull_request": %s, "pull_request_title": %s, "queued_at": %s}' \
+  printf '{"repository": %s, "workflow": %s, "job": %s, "run_id": %s, "run_attempt": %s, "ref": %s, "head_ref": %s, "sha": %s, "event": %s, "actor": %s, "runner": %s, "server_url": %s, "pull_request": %s, "pull_request_title": %s, "queued_at": %s,\n               "recent_durations": %s}' \
     "$(json_optional_string "${fields[repository]:-}")" "$(json_optional_string "${fields[workflow]:-}")" \
     "$(json_optional_string "${fields[job]:-}")" "$(json_optional_string "${fields[run_id]:-}")" \
     "$(json_integer "${fields[run_attempt]:-}")" "$(json_optional_string "${fields[ref]:-}")" \
@@ -173,14 +175,47 @@ render_job() {
     "$(json_optional_string "${fields[event]:-}")" "$(json_optional_string "${fields[actor]:-}")" \
     "$(json_optional_string "${fields[runner]:-}")" "$(json_optional_string "${fields[server_url]:-}")" \
     "$(json_integer "${fields[pull_request]:-}")" "$(json_optional_string "${fields[pull_request_title]:-}")" \
-    "$(json_integer "${fields[queued_at]:-}")"
+    "$(json_integer "${fields[queued_at]:-}")" "$recent_durations"
+}
+
+# The duration log (docs/job-slots.md#run-durations), read once per document.
+# Best effort, like the events: a lock held for long only hides the estimates.
+read_durations() {
+  local durations_fd
+  [[ -r $GRM_STATE_DIR/durations.log && -r $GRM_STATE_DIR/durations.lock ]] || return 0
+  exec {durations_fd}<"$GRM_STATE_DIR/durations.lock"
+  flock -s -w 1 "$durations_fd" || return 0
+  cat "$GRM_STATE_DIR/durations.log"
+  exec {durations_fd}<&-
+}
+
+# The seconds the newest ten logged runs of a repository's job and workflow
+# took, oldest first, as a JSON array of numbers; empty when any is unknown.
+# Reads $durations, set by render_slots.
+render_recent_durations() {
+  local repository=${1//[[:space:]]/_} job=${2//[[:space:]]/_} workflow=$3
+  if [[ -z $repository || -z $job || -z $workflow ]]; then printf '[]'; return 0; fi
+  REPOSITORY=$repository JOB=$job WORKFLOW=$workflow awk '
+    # No interval expressions: older mawk reads {0,8} literally.
+    $2 ~ /^(0|[1-9][0-9]*)$/ && length($2) <= 9 && $3 == ENVIRON["REPOSITORY"] && $4 == ENVIRON["JOB"] {
+      workflow = $0
+      sub(/^[^ ]+ [^ ]+ [^ ]+ [^ ]+ /, "", workflow)
+      if (workflow == ENVIRON["WORKFLOW"]) kept[count++ % 10] = $2
+    }
+    END {
+      printf "["
+      for (index_ = (count > 10 ? count - 10 : 0); index_ < count; index_++)
+        printf "%s%s", (separator++ ? ", " : ""), kept[index_ % 10]
+      printf "]"
+    }' <<< "$durations"
 }
 
 render_slots() {
   local kind ticket process start waiter waiter_start weight name since unparking used=0 separator='' rows='' raw
-  local job capacity=$GRM_SLOTS_CAPACITY max_wait=$GRM_SLOTS_MAX_WAIT
+  local job capacity=$GRM_SLOTS_CAPACITY max_wait=$GRM_SLOTS_MAX_WAIT durations
   # A failure (such as a lock that stays held) must not read as an empty gate.
   raw=$("$GRM_ROOT/bin/job-slots" status --raw) || return
+  durations=$(read_durations)
   while read -r kind ticket process start waiter waiter_start weight name since; do
     [[ -n $kind ]] || continue
     [[ $kind != next ]] || continue

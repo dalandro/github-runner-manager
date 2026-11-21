@@ -88,6 +88,8 @@ defmodule Dashboard.Status do
     What the runner job hook recorded about a slot holder's job. Every field
     may be unknown: a record from before job records, a hook that could not
     write one, or a producer that leaves fields out all read as `nil`.
+    `recent_durations` are the seconds earlier runs of the same job took on
+    the host, oldest first, at most ten; none are known when it is empty.
     """
     defstruct [
       :repository,
@@ -104,7 +106,8 @@ defmodule Dashboard.Status do
       :server_url,
       :pull_request,
       :pull_request_title,
-      :queued_at
+      :queued_at,
+      recent_durations: []
     ]
 
     @type t :: %__MODULE__{
@@ -122,7 +125,8 @@ defmodule Dashboard.Status do
             server_url: String.t() | nil,
             pull_request: non_neg_integer() | nil,
             pull_request_title: String.t() | nil,
-            queued_at: non_neg_integer() | nil
+            queued_at: non_neg_integer() | nil,
+            recent_durations: [non_neg_integer()]
           }
   end
 
@@ -301,7 +305,7 @@ defmodule Dashboard.Status do
   defp slot_record!(_other), do: throw({:invalid_field, "slots.records"})
 
   @unknown_job Map.new(
-                 ~w(repository workflow job run_id run_attempt ref head_ref sha event actor runner server_url pull_request pull_request_title queued_at),
+                 ~w(repository workflow job run_id run_attempt ref head_ref sha event actor runner server_url pull_request pull_request_title queued_at recent_durations),
                  &{&1, nil}
                )
 
@@ -325,7 +329,8 @@ defmodule Dashboard.Status do
       server_url: optional_string!(job, "server_url"),
       pull_request: optional_integer!(job, "pull_request"),
       pull_request_title: optional_string!(job, "pull_request_title"),
-      queued_at: optional_integer!(job, "queued_at")
+      queued_at: optional_integer!(job, "queued_at"),
+      recent_durations: durations!(job, "recent_durations")
     }
   end
 
@@ -405,6 +410,22 @@ defmodule Dashboard.Status do
   defp optional_string!(map, key), do: fetch!(map, key, &(is_nil(&1) or is_binary(&1)))
 
   defp optional_number!(map, key), do: fetch!(map, key, &(is_nil(&1) or reading?(&1)))
+
+  # A missing or null list is none known. The producer sends at most ten; a
+  # longer list is still a list (the estimate takes the newest ten), and the
+  # cap only bounds what a document from elsewhere can make the page hold.
+  defp durations!(map, key) do
+    fetch!(map, key, fn
+      nil ->
+        true
+
+      durations when is_list(durations) and length(durations) <= 100 ->
+        Enum.all?(durations, &non_negative_integer?/1)
+
+      _other ->
+        false
+    end) || []
+  end
 
   # Bounds no host reaches, so the page's arithmetic cannot overflow on a
   # document from elsewhere (a relay push): integers stay exact in JSON, and

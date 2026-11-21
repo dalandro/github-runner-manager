@@ -37,7 +37,8 @@ that leaves this machine, such as a [relay push](relay-push.md); see
                "run_attempt": 1, "ref": "refs/pull/7/merge", "head_ref": "feature/x",
                "sha": "5c1d8e2fa907b34e6d1c0a8f2b9e7d4c3a6f1e05", "event": "pull_request",
                "actor": "dev-alex", "runner": "web-app", "server_url": "https://github.com",
-               "pull_request": 7, "pull_request_title": "Add the thing", "queued_at": 1767268601}}
+               "pull_request": 7, "pull_request_title": "Add the thing", "queued_at": 1767268601,
+               "recent_durations": [212, 198, 240]}}
     ]
   },
   "device_lock": {
@@ -63,6 +64,7 @@ that leaves this machine, such as a [relay push](relay-push.md); see
 | `workers[]` | Every busy job worker owned by the current user, including runners outside `GRM_RUNNERS`. `pid` is its process id; `directory` is the executable path with its last two components removed (`/srv/runners/web-app/bin/Runner.Worker` becomes `/srv/runners/web-app`, also for `bin.<version>`). Older producers may omit this array; readers treat it as empty. |
 | `slots.records[]` | Live records after in-memory reaping, in state-file order. `kind` is `holding`, `queued` or `parked`; queue order is ascending `ticket`. `holder_pid` equals a runner's `worker_pid` when the job came through the runner hooks. `since` is the last transition (`null` for records older than the field). `unparking` is true while a parked job is actively asking for its units back. |
 | `slots.records[].job` | What the job's start hook recorded ([job records](job-slots.md#job-records)). Always an object with these keys; a field the record lacks is `null`, and all are `null` for a holder without a record. `run_id` is a string, `run_attempt`, `pull_request` and `queued_at` (epoch seconds, when the start hook ran) are numbers. Older producers omit `job`; readers treat a missing or `null` object, or a missing key, as unknown. Strings are ASCII: any other character reads `?`, as everywhere in this document. |
+| `slots.records[].job.recent_durations` | Seconds the newest runs of the same repository, job and workflow were on the host, oldest first, at most ten ([run durations](job-slots.md#run-durations)). Always an array; empty when none are logged, the job is unknown, or the log stays locked for a second. Older producers omit it; readers treat it as empty. |
 | `device_lock.state` | `absent` (no file at the configured lock path), `free` or `held`, from the lock's flock holders. |
 | `device_lock.holder` | The wrapper's holder file, or `null`. `alive` says whether that wrapper process still exists; a `held` lock without a live holder is a leaked descriptor. |
 | `device_lock.watchdog.stale[]` | What `stale-lock-watchdog` would report now: flock holders other than the live wrapper, older than `min_age_seconds`. `kill` reports the configured mode only. |
@@ -84,7 +86,7 @@ output (exit 70), and the suite fails until a new field gets one.
 
 | Class | Fields | Sent |
 | --- | --- | --- |
-| keep | numbers, states, times, process ids | as is |
+| keep | numbers, states, times, process ids, a job's recent durations | as is |
 | alias | runner names (`runner-1`, `runner-2` in config order) and units (`runner-1.service`); repositories, slot labels, the lock holder's repository and event subjects (`repo-1`, `repo-2` in config order); a job's runner | the stand-in, or `other` for a name the config does not list |
 | alias | the stale holder's process name, also the subject of `stale` and `kill` events | as is for a device tool (`adb`, `emulator`, `qemu-system-x86`, `qemu-system-aar`), else `process` |
 | alias | event kinds | as is for the kinds in [events.md](events.md), else `other` |

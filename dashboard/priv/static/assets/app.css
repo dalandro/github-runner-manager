@@ -938,3 +938,30 @@ code {
     transition: width 0.4s ease;
   }
 }
+
+/* Expected run time */
+
+.estimate {
+  margin-top: 4px;
+  font-size: 0.85rem;
+}
+
+.estimate-track {
+  display: block;
+  width: 100%;
+  min-width: 9rem;
+  height: 6px;
+  margin: 2px 0;
+}
+
+.estimate-fill {
+  fill: var(--accent);
+}
+
+.estimate-over .estimate-fill {
+  fill: var(--warn);
+}
+
+.estimate-over p {
+  color: var(--warn);
+}

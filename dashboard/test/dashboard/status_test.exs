@@ -42,9 +42,53 @@ defmodule Dashboard.StatusTest do
                  ref: "refs/pull/57/merge",
                  pull_request: 57,
                  pull_request_title: "Keep drafts while offline",
-                 queued_at: 1_767_267_932
+                 queued_at: 1_767_267_932,
+                 recent_durations: [1380, 1512, 1446, 1620, 1498, 1555, 1471, 1532, 1590, 1489]
                }
              } = hd(Fixtures.status().slots.records)
+    end
+
+    test "a job without recent durations, or with null, has none" do
+      status =
+        Fixtures.status(fn document ->
+          document
+          |> update_in(
+            ["slots", "records", Access.at(0), "job"],
+            &Map.delete(&1, "recent_durations")
+          )
+          |> put_in(["slots", "records", Access.at(1), "job", "recent_durations"], nil)
+        end)
+
+      assert [
+               %SlotRecord{job: %Job{recent_durations: []}},
+               %SlotRecord{job: %Job{recent_durations: []}} | _
+             ] =
+               status.slots.records
+    end
+
+    test "accepts more recent durations than the producer sends; the estimate takes ten" do
+      status =
+        Fixtures.status(
+          &put_in(
+            &1,
+            ["slots", "records", Access.at(0), "job", "recent_durations"],
+            List.duplicate(600, 11)
+          )
+        )
+
+      assert length(hd(status.slots.records).job.recent_durations) == 11
+    end
+
+    test "rejects recent durations that are not a bounded list of whole seconds" do
+      for durations <- [600, [600, -1], [600, 1.5], ["600"], List.duplicate(600, 101)] do
+        assert {:error, {:invalid_field, "recent_durations"}} =
+                 Fixtures.document()
+                 |> put_in(
+                   ["slots", "records", Access.at(0), "job", "recent_durations"],
+                   durations
+                 )
+                 |> Status.parse()
+      end
     end
 
     test "a record without a job, a null job, or a job missing fields, is unknown" do
