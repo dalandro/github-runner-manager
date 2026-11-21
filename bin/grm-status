@@ -196,7 +196,8 @@ render_recent_durations() {
   local repository=${1//[[:space:]]/_} job=${2//[[:space:]]/_} workflow=$3
   if [[ -z $repository || -z $job || -z $workflow ]]; then printf '[]'; return 0; fi
   REPOSITORY=$repository JOB=$job WORKFLOW=$workflow awk '
-    $2 ~ /^(0|[1-9][0-9]{0,8})$/ && $3 == ENVIRON["REPOSITORY"] && $4 == ENVIRON["JOB"] {
+    # No interval expressions: older mawk reads {0,8} literally.
+    $2 ~ /^(0|[1-9][0-9]*)$/ && length($2) <= 9 && $3 == ENVIRON["REPOSITORY"] && $4 == ENVIRON["JOB"] {
       workflow = $0
       sub(/^[^ ]+ [^ ]+ [^ ]+ [^ ]+ /, "", workflow)
       if (workflow == ENVIRON["WORKFLOW"]) kept[count++ % 10] = $2
